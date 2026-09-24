@@ -269,6 +269,7 @@ func TestServiceRemovesALibraryNoLongerReadFromTheCatalogue(t *testing.T) {
 	assert.Equal(t, OutcomeSucceeded, result.Outcome, "RunSource() outcome")
 	require.Len(t, state.trusted, 1, "stored inventory")
 	assert.Equal(t, read.Key(), state.trusted[0].Key(), "only the library still read is kept")
+	assert.True(t, result.LibraryChanged, "dropping a library changes it")
 }
 
 // Turning every library off leaves nothing to read, and still empties the catalogue.
@@ -1868,6 +1869,26 @@ func TestServiceRunSourceProviderReadsOnlyTheLibraryItNames(t *testing.T) {
 	assert.Equal(t, 1, result.SourceStages, "stages read")
 	require.Len(t, result.Sources, 1, "libraries reported")
 	assert.Equal(t, route.ProviderVeloPlanner, result.Sources[0].Provider, "the library reported")
+}
+
+// Only a read that leaves the stored library different reports a change, which
+// is what the rides' route matching follows.
+func TestServiceReportsWhetherTheReadChangedTheLibrary(t *testing.T) {
+	state := newFakeState("a")
+	source := &fakeSource{stages: []route.Route{testStage(t, 1, 1, "first", "first-hash")}}
+	service := newService(t, state, source, &fakeEncoder{}, newFakeTarget(), false)
+
+	assert.True(t, service.RunSource(t.Context()).LibraryChanged, "a first read")
+	assert.False(t, service.RunSource(t.Context()).LibraryChanged, "the same library again")
+	assert.False(t, service.RunSourceProvider(t.Context(), route.ProviderVeloPlanner).LibraryChanged,
+		"the same library read alone")
+
+	source.stages = []route.Route{testStage(t, 1, 1, "second", "second-hash")}
+	assert.True(t, service.RunSource(t.Context()).LibraryChanged, "a revised stage")
+
+	source.stages = []route.Route{testStage(t, 1, 1, "second", "second-hash")}
+	state.trustedErr = errors.New("disk gone")
+	assert.True(t, service.RunSource(t.Context()).LibraryChanged, "a stored library that cannot be read back")
 }
 
 func TestServiceRunSourceProviderIsNotReadyForAnUnconfiguredLibrary(t *testing.T) {

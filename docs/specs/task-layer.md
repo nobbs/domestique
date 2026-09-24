@@ -124,7 +124,7 @@ activity:poll     stored recorded rides   ->  activity:derive
 activity:record   stored one ride's file  ->  activity:derive
 activity:record   stored one ride's file  ->  zwift:poll         (reads Zwift only for a target holding a held ride)
 zwift:poll        stored indoor rides     ->  activity:derive
-sync:source       stored an inventory     ->  activity:derive
+sync:source       changed the library     ->  activity:derive
 sync:plan         changed stored plans    ->  activity:derive
 activity:derive   derived stored rides    ->  activity:analyse   (only with a token)
 ~~~
@@ -479,8 +479,10 @@ resource they do, because it reads exactly the rows they write: a ride whose
 file has just landed is derived on the same cycle rather than the next one. It
 also follows both writers of the library, the read and the plan push, because
 a changed library owes every ride a fresh route match: the rides are rematched
-on the cycle that changed it rather than at the next hourly run. A read that
-changed nothing leaves every match current, so that run matches nothing. New
+on the cycle that changed it rather than at the next hourly run. Unlike every
+other edge, these two fire only when the attempt reports that it changed the
+stored library, so an hourly read that found the library as it was starts no
+derivation. New
 samples and a profile edit both start it — the second directly, from the
 settings write, over that rider's own targets — but neither reaches a history
 already stored: a poll over rides that are all synced reports unchanged, so
@@ -527,6 +529,11 @@ Each edge fires on its own, so a task following two predecessors runs after
 each. That is what classification wants: a read leaves stages nobody has
 classified, and a rebuild leaves the stored classifications stale, and neither
 is waiting on the other.
+
+An edge may instead be declared to follow a predecessor's changes: it fires
+only after an attempt that reports it changed what the successor reads, on top
+of the usual rule above. A successor with nothing to do unless something moved
+uses one, so a predecessor that succeeds on every run does not start it each time.
 
 An edge carries no argument, with one exception: a task may fan a chain out
 over its own arguments instead, one invocation each, rather than the single

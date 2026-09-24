@@ -1213,7 +1213,7 @@ func TestAChainWillNotRunTheSameInvocationTwice(t *testing.T) {
 	}), "Register()")
 	// The graph a correct Resolve refuses, reached behind its back: the set of
 	// what this chain has run is what has to stop it.
-	manager.tasks["loop"].successors = []string{"loop"}
+	manager.tasks["loop"].successors = []successor{{name: "loop"}}
 
 	require.True(t, manager.Trigger(t.Context(), "loop", ""), "Trigger()")
 	manager.Wait()
@@ -1357,6 +1357,50 @@ func TestNothingFollowsAnAttemptThatDidNotSucceed(t *testing.T) {
 			assert.Zero(t, followed.runs(), "something followed an attempt that did not succeed")
 		})
 	}
+}
+
+func TestAChangeEdgeFiresOnlyAfterAnAttemptThatChangedSomething(t *testing.T) {
+	t.Parallel()
+
+	for name, changed := range map[string]bool{"changed": true, "unchanged": false} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			plain, onChange := countingRunner(), countingRunner()
+			manager, _ := newTestManager(t)
+			came := changed
+			require.NoError(t, manager.Register(&Definition{
+				Name: "parent",
+				Run: RunnerFunc(func(context.Context, Invocation) Result {
+					return Result{Outcome: Succeeded, Changed: came}
+				}),
+			}), "Register(parent)")
+			require.NoError(t, manager.Register(&Definition{
+				Name: "plain", Run: plain, Follows: []string{"parent"},
+			}), "Register(plain)")
+			require.NoError(t, manager.Register(&Definition{
+				Name: "on-change", Run: onChange, FollowsChanges: []string{"parent"},
+			}), "Register(on-change)")
+			require.NoError(t, manager.Resolve(), "Resolve()")
+
+			require.True(t, manager.Trigger(t.Context(), "parent", ""), "Trigger()")
+			manager.Wait()
+
+			assert.Equal(t, 1, plain.runs(), "a plain edge")
+			assert.Equal(t, map[bool]int{true: 1, false: 0}[changed], onChange.runs(), "a change edge")
+		})
+	}
+}
+
+func TestResolveRefusesAChangeEdgeToAnUnregisteredTask(t *testing.T) {
+	t.Parallel()
+
+	manager, _ := newTestManager(t)
+	require.NoError(t, manager.Register(&Definition{
+		Name: "child", Run: succeeds(), FollowsChanges: []string{"missing"},
+	}), "Register(child)")
+
+	assert.ErrorContains(t, manager.Resolve(), `follows changes of "missing"`)
 }
 
 func TestARefusalSaysWhichKindOfBusyStoppedIt(t *testing.T) {

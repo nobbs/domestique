@@ -124,17 +124,18 @@ func (s *Service) RunSource(ctx context.Context) Result {
 	if err != nil {
 		return Result{Phase: PhaseSource, Outcome: OutcomeNotReady}
 	}
-	if failure := s.dropUnread(ctx, sources); failure != FailureNone {
-		return Result{Phase: PhaseSource, Outcome: OutcomeFailed, Failure: failure}
+	dropped, failure := s.dropUnread(ctx, sources)
+	if failure != FailureNone {
+		return Result{Phase: PhaseSource, Outcome: OutcomeFailed, Failure: failure, LibraryChanged: dropped}
 	}
 	if len(sources) == 0 {
-		return Result{Phase: PhaseSource, Outcome: OutcomeNotReady}
+		return Result{Phase: PhaseSource, Outcome: OutcomeNotReady, LibraryChanged: dropped}
 	}
 
-	result := Result{Phase: PhaseSource, Sources: make([]SourceResult, 0, len(sources))}
+	result := Result{Phase: PhaseSource, Sources: make([]SourceResult, 0, len(sources)), LibraryChanged: dropped}
 	for _, source := range sources {
 		provider := source.Provider()
-		outcome, failure, stageCount := s.runOneSource(ctx, source, provider)
+		outcome, failure, stageCount, changed := s.runOneSource(ctx, source, provider)
 		result.Sources = append(result.Sources, SourceResult{
 			Provider:   provider,
 			Outcome:    outcome,
@@ -142,6 +143,7 @@ func (s *Service) RunSource(ctx context.Context) Result {
 			StageCount: stageCount,
 		})
 		result.SourceStages += stageCount
+		result.LibraryChanged = result.LibraryChanged || changed
 		if failure == FailureNone {
 			continue
 		}
@@ -168,9 +170,10 @@ func (s *Service) RunSource(ctx context.Context) Result {
 // dropUnread removes the stored share of every library no longer read. It is
 // deliberate rather than an empty listing, so the empty-source gate does not apply.
 // A library this run reads is spared, whatever a settings edit since then says.
-func (s *Service) dropUnread(ctx context.Context, reading []Source) FailureCategory {
+// Dropped reports whether any stored share was removed.
+func (s *Service) dropUnread(ctx context.Context, reading []Source) (dropped bool, failure FailureCategory) {
 	if s.unread == nil {
-		return FailureNone
+		return false, FailureNone
 	}
 	for _, provider := range s.unread() {
 		if slices.ContainsFunc(reading, func(source Source) bool { return source.Provider() == provider }) {
@@ -178,17 +181,18 @@ func (s *Service) dropUnread(ctx context.Context, reading []Source) FailureCateg
 		}
 		stored, err := s.state.TrustedInventoryCount(ctx, provider)
 		if err != nil {
-			return FailureState
+			return dropped, FailureState
 		}
 		if stored == 0 {
 			continue
 		}
 		if err := s.state.StoreTrustedInventory(ctx, provider, nil); err != nil {
-			return FailureState
+			return dropped, FailureState
 		}
+		dropped = true
 	}
 
-	return FailureNone
+	return dropped, FailureNone
 }
 
 // RunSourceProvider reads exactly one configured source library, leaving every
@@ -202,13 +206,14 @@ func (s *Service) RunSourceProvider(ctx context.Context, provider route.Provider
 	if !configured {
 		return Result{Phase: PhaseSource, Outcome: OutcomeNotReady}
 	}
-	outcome, failure, stageCount := s.runOneSource(ctx, source, provider)
+	outcome, failure, stageCount, changed := s.runOneSource(ctx, source, provider)
 
 	return Result{
-		Phase:        PhaseSource,
-		Outcome:      outcome,
-		Failure:      failure,
-		SourceStages: stageCount,
+		Phase:          PhaseSource,
+		Outcome:        outcome,
+		Failure:        failure,
+		SourceStages:   stageCount,
+		LibraryChanged: changed,
 		Sources: []SourceResult{{
 			Provider: provider, Outcome: outcome, Failure: failure, StageCount: stageCount,
 		}},
@@ -217,37 +222,57 @@ func (s *Service) RunSourceProvider(ctx context.Context, provider route.Provider
 
 // runOneSource reads and stores one configured source's own share of the
 // trusted inventory, leaving every other source's stored stages untouched.
+// Changed reports whether the stored share now differs from what it replaced.
 func (s *Service) runOneSource(
 	ctx context.Context, source Source, provider route.Provider,
-) (Outcome, FailureCategory, int) {
+) (outcome Outcome, failure FailureCategory, stageCount int, changed bool) {
 	trustedCount, err := s.state.TrustedInventoryCount(ctx, provider)
 	if err != nil {
-		return OutcomeFailed, FailureState, 0
+		return OutcomeFailed, FailureState, 0, false
 	}
 	stages, err := source.Inventory(ctx)
 	if err != nil {
-		return OutcomeFailed, FailureSource, 0
+		return OutcomeFailed, FailureSource, 0, false
 	}
 	for _, stage := range stages {
 		if stage.Key().Provider() != provider {
-			return OutcomeFailed, FailureSource, 0
+			return OutcomeFailed, FailureSource, 0, false
 		}
 	}
 	_, ordered, err := normalizeInventory(stages)
 	if err != nil {
-		return OutcomeFailed, FailureSource, 0
+		return OutcomeFailed, FailureSource, 0, false
 	}
 	// The local source is exempt: an empty read of it is a true statement that
 	// the last plan was unpublished or deleted, never a truncated upstream listing.
 	if len(ordered) == 0 && trustedCount > 0 && provider != route.ProviderLocal && !s.allowEmptySourceDeletion() {
-		return OutcomeBlocked, FailureEmptySource, 0
+		return OutcomeBlocked, FailureEmptySource, 0, false
 	}
 	exported := s.exportProfiles(ordered)
+	// A stored share that cannot be read back is assumed changed: this store is
+	// what repairs it, and whatever follows a change is safe to run again.
+	before, err := s.state.TrustedInventory(ctx)
+	changed = err != nil || !slices.Equal(providerShare(before, provider), providerShare(exported, provider))
 	if err := s.state.StoreTrustedInventory(ctx, provider, exported); err != nil {
-		return OutcomeFailed, FailureState, 0
+		return OutcomeFailed, FailureState, 0, false
 	}
 
-	return OutcomeSucceeded, FailureNone, len(ordered)
+	return OutcomeSucceeded, FailureNone, len(ordered), changed
+}
+
+// providerShare is one provider's part of an inventory, as what a change to it
+// would alter, in key order.
+func providerShare(stages []route.Route, provider route.Provider) []string {
+	var share []string
+	for index := range stages {
+		stage := &stages[index]
+		if stage.Key().Provider() == provider {
+			share = append(share, stage.Key().ExternalID()+"\x00"+stage.Revision()+"\x00"+stage.ContentHash())
+		}
+	}
+	slices.Sort(share)
+
+	return share
 }
 
 // RunTargets reconciles the stored inventory onto every configured target,

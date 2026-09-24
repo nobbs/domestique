@@ -82,14 +82,21 @@ type Manager struct {
 
 // registered is one task and what the manager knows about it right now.
 type registered struct {
-	// successors are the tasks whose Follows name this one, worked out afresh by
-	// each Resolve and settled before anything runs.
-	successors []string
+	// successors are the tasks whose Follows or FollowsChanges name this one,
+	// worked out afresh by each Resolve and settled before anything runs.
+	successors []successor
 	// nextDueAt holds the instant the next scheduled run is due, cleared while
 	// the schedule's own attempt runs: one overrunning its gap moves it.
 	nextDueAt  nextDueAt
 	definition Definition
 	inFlight   int
+}
+
+// successor is one edge out of a task; onChange is an edge declared through
+// FollowsChanges.
+type successor struct {
+	name     string
+	onChange bool
 }
 
 // NewManager creates an empty manager over the store its attempts are recorded
@@ -162,7 +169,14 @@ func (m *Manager) Resolve() error {
 			if !known {
 				return fmt.Errorf("task %q follows %q, which nothing registers", name, follows)
 			}
-			predecessor.successors = append(predecessor.successors, name)
+			predecessor.successors = append(predecessor.successors, successor{name: name})
+		}
+		for _, follows := range entry.definition.FollowsChanges {
+			predecessor, known := m.tasks[follows]
+			if !known {
+				return fmt.Errorf("task %q follows changes of %q, which nothing registers", name, follows)
+			}
+			predecessor.successors = append(predecessor.successors, successor{name: name, onChange: true})
 		}
 	}
 
@@ -188,12 +202,12 @@ func (m *Manager) refuseCycles() error {
 			return fmt.Errorf("task %q follows itself, through %s", name, strings.Join(path, " then "))
 		}
 		state[name] = visiting
-		for _, successor := range m.tasks[name].successors {
+		for _, next := range m.tasks[name].successors {
 			// Cloned rather than appended in place: path's backing array is shared
 			// across sibling successors, and appending onto it would let one
 			// sibling's branch overwrite another's, naming a path in the cycle
 			// message that was never actually walked.
-			if err := walk(successor, append(slices.Clone(path), successor)); err != nil {
+			if err := walk(next.name, append(slices.Clone(path), next.name)); err != nil {
 				return err
 			}
 		}
@@ -444,10 +458,11 @@ func (m *Manager) perform(
 	// What follows an attempt follows a successful one, or one that stored
 	// something worth building on even though it did not fully succeed. A read
 	// that stored nothing at all left every classification standing.
-	if result := m.attemptAndRelease(ctx, entry, invocation, release); result.Outcome != Succeeded && !result.Advances {
+	result := m.attemptAndRelease(ctx, entry, invocation, release)
+	if result.Outcome != Succeeded && !result.Advances {
 		return
 	}
-	m.chain(ctx, entry, visited, depth+1)
+	m.chain(ctx, entry, result.Changed, visited, depth+1)
 }
 
 // attemptAndRelease runs one attempt and gives back what it held, whatever
@@ -465,7 +480,7 @@ func (m *Manager) attemptAndRelease(
 // depth cap and the set of what this chain has run stay as belt and braces
 // behind registration refusing a cycle.
 func (m *Manager) chain(
-	ctx context.Context, entry *registered, visited map[invocationKey]struct{}, depth int,
+	ctx context.Context, entry *registered, changed bool, visited map[invocationKey]struct{}, depth int,
 ) {
 	if len(entry.successors) == 0 {
 		return
@@ -475,8 +490,11 @@ func (m *Manager) chain(
 
 		return
 	}
-	for _, name := range entry.successors {
-		m.runSuccessor(ctx, name, visited, depth)
+	for _, next := range entry.successors {
+		if next.onChange && !changed {
+			continue
+		}
+		m.runSuccessor(ctx, next.name, visited, depth)
 	}
 }
 

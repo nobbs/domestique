@@ -120,11 +120,8 @@ func (s *Service) runPlans(ctx context.Context, planID int64) (Result, FailureCa
 	if !configured {
 		return Result{Phase: PhaseTargets, Outcome: OutcomeNotReady}, FailureNone
 	}
-	before, err := s.state.TrustedInventory(ctx)
-	if err != nil {
-		return Result{Phase: PhaseTargets, Outcome: OutcomeFailed, Failure: FailureState}, FailureState
-	}
-	if outcome, failure, _ := s.runOneSource(ctx, source, route.ProviderLocal); failure != FailureNone {
+	outcome, failure, _, changed := s.runOneSource(ctx, source, route.ProviderLocal)
+	if failure != FailureNone {
 		return Result{Phase: PhaseTargets, Outcome: outcome, Failure: failure}, failure
 	}
 	stored, err := s.state.TrustedInventory(ctx)
@@ -136,7 +133,7 @@ func (s *Service) runPlans(ctx context.Context, planID int64) (Result, FailureCa
 		return Result{Phase: PhaseTargets, Outcome: OutcomeFailed, Failure: FailureState}, FailureState
 	}
 
-	result := Result{Phase: PhaseTargets, SourceStored: !slices.Equal(localShare(before), localShare(stored))}
+	result := Result{Phase: PhaseTargets, SourceStored: changed}
 	unreached := FailureNone
 	for _, targetID := range s.targetIDs() {
 		push := s.pushPlans(ctx, targetID, desired, planID)
@@ -172,21 +169,6 @@ func (s *Service) runPlans(ctx context.Context, planID int64) (Result, FailureCa
 	}
 
 	return result, unreached
-}
-
-// localShare is the plans' part of a stored inventory, as what a change to
-// them would alter, in key order.
-func localShare(stages []route.Route) []string {
-	var share []string
-	for index := range stages {
-		stage := &stages[index]
-		if stage.Key().Provider() == route.ProviderLocal {
-			share = append(share, stage.Key().ExternalID()+"\x00"+stage.Revision()+"\x00"+stage.ContentHash())
-		}
-	}
-	slices.Sort(share)
-
-	return share
 }
 
 // planPush is one target's share of a push. Contacted is whether the target
