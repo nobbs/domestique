@@ -122,7 +122,7 @@ func TestClientInventoryReLogsInOnceWhenTheSessionExpires(t *testing.T) {
 				writer.WriteHeader(http.StatusUnauthorized)
 				return
 			}
-			writeBody(t, writer, `{"data":[],"metadata":{"page":1,"total_pages":1,"total_count":0}}`)
+			writeBody(t, writer, `{"data":[],"metadata":{"page":1,"per_page":20,"total_pages":0,"total_count":0}}`)
 		default:
 			assert.Failf(t, "unexpected request", "%s %s", request.Method, request.URL)
 			writer.WriteHeader(http.StatusNotFound)
@@ -182,7 +182,7 @@ func TestClientInventoryReLogsInOnceWhenRedirectedToTheLoginForm(t *testing.T) {
 				http.Redirect(writer, request, "/login", http.StatusFound)
 				return
 			}
-			writeBody(t, writer, `{"data":[],"metadata":{"page":1,"total_pages":1,"total_count":0}}`)
+			writeBody(t, writer, `{"data":[],"metadata":{"page":1,"per_page":20,"total_pages":0,"total_count":0}}`)
 		default:
 			assert.Failf(t, "unexpected request", "%s %s", request.Method, request.URL)
 			writer.WriteHeader(http.StatusNotFound)
@@ -240,7 +240,7 @@ func TestClientInventoryIsSafeForConcurrentUse(t *testing.T) {
 			http.SetCookie(writer, authenticatedCookie())
 			writeBody(t, writer, `isUserLoggedIn: true, userId: 42`)
 		case request.Method == http.MethodGet && request.URL.Path == "/api/internal/users/42/routes":
-			writeBody(t, writer, `{"data":[],"metadata":{"page":1,"total_pages":1,"total_count":0}}`)
+			writeBody(t, writer, `{"data":[],"metadata":{"page":1,"per_page":20,"total_pages":0,"total_count":0}}`)
 		default:
 			assert.Failf(t, "unexpected request", "%s %s", request.Method, request.URL)
 			writer.WriteHeader(http.StatusNotFound)
@@ -264,6 +264,45 @@ func TestClientInventoryIsSafeForConcurrentUse(t *testing.T) {
 		require.NoError(t, err)
 	}
 	assert.Equal(t, int32(1), loginCount.Load(), "concurrent calls sharing a client must still log in only once")
+}
+
+func TestClientInventoryAcceptsZeroPagesOnlyForAnEmptyLibrary(t *testing.T) {
+	tests := []struct {
+		name    string
+		listing string
+		wantErr bool
+	}{
+		{name: "empty", listing: `{"data":[],"metadata":{"page":1,"per_page":20,"total_pages":0,"total_count":0}}`},
+		{name: "zero pages with routes", listing: `{"data":[{"id":100}],"metadata":{"page":1,"per_page":20,"total_pages":0,"total_count":0}}`, wantErr: true},
+		{name: "zero pages with a count", listing: `{"data":[],"metadata":{"page":1,"per_page":20,"total_pages":0,"total_count":3}}`, wantErr: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+				switch {
+				case request.Method == http.MethodGet && request.URL.Path == "/login":
+					writeBody(t, writer, `<input value="csrf-token" name="_csrf_token" type="hidden">`)
+				case request.Method == http.MethodPost && request.URL.Path == "/login":
+					http.SetCookie(writer, authenticatedCookie())
+					writeBody(t, writer, `isUserLoggedIn: true, userId: 42`)
+				case request.URL.Path == "/api/internal/users/42/routes":
+					writeBody(t, writer, test.listing)
+				default:
+					writer.WriteHeader(http.StatusNotFound)
+				}
+			}))
+			defer server.Close()
+
+			stages, err := newTestClient(t, server).Inventory(t.Context())
+			if test.wantErr {
+				require.ErrorContains(t, err, "pagination")
+
+				return
+			}
+			require.NoError(t, err)
+			assert.Empty(t, stages)
+		})
+	}
 }
 
 func TestClientInventoryRejectsUnauthenticatedLogin(t *testing.T) {
