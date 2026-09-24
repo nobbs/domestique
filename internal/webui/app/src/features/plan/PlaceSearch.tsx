@@ -32,6 +32,7 @@ import { Spinner } from "../../components/ui/spinner";
 import { formatDistance } from "../../lib/format";
 import { usePrefersReducedMotion } from "../../lib/mediaQuery";
 import { haversineMetres } from "../../lib/profile";
+import { useSearchPalette } from "../../lib/searchPalette";
 
 /** Fewer characters than this match too much to be worth asking; the service refuses them too. */
 const MINIMUM_QUERY = 3;
@@ -99,6 +100,7 @@ export interface PlaceSearchProps {
 export function PlaceSearch({ onAdd, disabled = false }: PlaceSearchProps) {
   const { current: map } = useMap();
   const reducedMotion = usePrefersReducedMotion();
+  const palette = useSearchPalette();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
@@ -142,14 +144,18 @@ export function PlaceSearch({ onAdd, disabled = false }: PlaceSearchProps) {
   };
 
   useEffect(() => {
+    // Each chord closes the other's panel, so the two never stack.
     const onKey = (event: KeyboardEvent) => {
-      if (
-        !disabled &&
-        (event.metaKey || event.ctrlKey) &&
-        event.shiftKey &&
-        event.key.toLowerCase() === "k"
-      ) {
+      if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== "k") {
+        return;
+      }
+      if (!event.shiftKey) {
+        if (open) {
+          show(false);
+        }
+      } else if (!disabled) {
         event.preventDefault();
+        palette.setOpen(false);
         show(!open);
       }
     };
