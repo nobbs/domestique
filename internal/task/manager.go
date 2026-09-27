@@ -294,7 +294,9 @@ func (m *Manager) Request(ctx context.Context, name, argument string) bool {
 	return false
 }
 
-// Wait waits for every accepted trigger to finish.
+// Wait waits for every accepted trigger to finish, and for every parked attempt
+// already started; one still parked has not started, and never will once its
+// context has ended.
 func (m *Manager) Wait() {
 	m.triggered.Wait()
 }
@@ -858,15 +860,17 @@ func (m *Manager) admitOrPark(ctx context.Context, entry *registered, invocation
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 
-	release, outcome := m.admitLocked(entry, invocation)
-	if outcome != admitHeld || !entry.definition.ParkWhenHeld {
-		return release, outcome
-	}
 	key := keyOf(invocation)
+	// Joined before admission, so a request landing between a release and its
+	// unpark cannot overtake the copy already waiting.
 	for _, waiting := range m.parked {
 		if keyOf(waiting.invocation) == key {
 			return nil, admitParked
 		}
+	}
+	release, outcome := m.admitLocked(entry, invocation)
+	if outcome != admitHeld || !entry.definition.ParkWhenHeld {
+		return release, outcome
 	}
 	m.parked = append(m.parked, parkedAttempt{ctx: ctx, entry: entry, invocation: invocation})
 

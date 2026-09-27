@@ -2563,3 +2563,35 @@ func TestARequestWithNothingHeldStartsAtOnce(t *testing.T) {
 
 	assert.Equal(t, []string{"a"}, recorder.arguments(), "the request did not run")
 }
+
+func TestARequestJoinsTheCopyAlreadyWaitingEvenWhenTheResourceIsFree(t *testing.T) {
+	t.Parallel()
+
+	manager, store := newTestManager(t)
+	held := holdInventory(t, manager)
+	recorder := argumentRecorder()
+	require.NoError(t, manager.Register(&Definition{
+		Name: "record", Run: recorder, Resources: exclusive("inventory"), ParkWhenHeld: true,
+	}), "Register(record)")
+	require.True(t, manager.Request(t.Context(), "record", "a"), "Request(a)")
+
+	// The instant between a release and its unpark: the resource is free while
+	// the first copy still waits.
+	manager.mutex.Lock()
+	delete(manager.exclusive, "inventory")
+	manager.mutex.Unlock()
+	require.True(t, manager.Request(t.Context(), "record", "a"), "Request(a) again")
+	manager.mutex.Lock()
+	manager.exclusive["inventory"] = struct{}{}
+	manager.mutex.Unlock()
+
+	close(held.release)
+	manager.Wait()
+	require.Eventually(t, func() bool { return len(recorder.arguments()) == 1 },
+		time.Second, time.Millisecond, "the waiting copy never ran")
+	manager.Wait()
+	assert.Equal(t, []string{"a"}, recorder.arguments(), "the request overtook the waiting copy")
+	for _, run := range store.recorded() {
+		assert.NotEqual(t, string(Skipped), run.outcome, "a joined request left a refusal: %+v", run)
+	}
+}
