@@ -98,9 +98,10 @@ then gather evidence with the commands here. Frequent ones:
   which is also what a webhook-started run records:
 
   ```sh
-  q "SELECT task, argument, trigger, outcome, detail, datetime(started_at_unix,'unixepoch') s,
+  q "SELECT task, argument, trigger, outcome, detail, reference, datetime(started_at_unix,'unixepoch') s,
        finished_at_unix-started_at_unix dur FROM task_runs
      WHERE started_at_unix > strftime('%s','now','-1 day') ORDER BY started_at_unix;"
+  q "SELECT * FROM task_runs WHERE reference = '<run reference from Pushover>';"
   q "SELECT task, trigger, outcome, detail, count(*) n, datetime(max(started_at_unix),'unixepoch') last
      FROM task_runs WHERE started_at_unix > strftime('%s','now','-14 days')
      GROUP BY 1,2,3,4 ORDER BY 1,2,3;"
@@ -143,16 +144,22 @@ database (pre-approved), use it, and revoke it before finishing.
    router label):
 
    ```sh
-   api() { ssh domestique "curl -s -H 'Cookie: __Host-domestique_session=$(cat .local/live-debug/token)' -H 'Origin: $ORIGIN' $*"; }
+   api() {  # headers travel on stdin; arguments are quoted once for the remote shell
+     printf 'header = "Cookie: __Host-domestique_session=%s"\nheader = "Origin: %s"\n' \
+       "$(cat .local/live-debug/token)" "$ORIGIN" |
+       ssh domestique "curl -s -K - $(printf '%q ' "$@")"
+   }
    api http://127.0.0.1:8080/v1/status | jq .
    api -X POST http://127.0.0.1:8080/v1/…
    ```
 
-4. Revoke through the app's own sign-out, then delete the binary:
+4. Revoke through the app's own sign-out, and delete the token and binary only
+   once it answers `204`; otherwise retry, since the token is the only way to
+   revoke that session before its 24 h expiry:
 
    ```sh
-   api -X POST http://127.0.0.1:8080/auth/logout -o /dev/null -w '%{http_code}\n'   # 204
-   ssh domestique 'rm -f /tmp/live-session'; rm -rf .local/live-session .local/live-debug
+   [ "$(api -X POST http://127.0.0.1:8080/auth/logout -o /dev/null -w '%{http_code}')" = 204 ] &&
+     ssh domestique 'rm -f /tmp/live-session' && rm -rf .local/live-session .local/live-debug
    ```
 
 ## State database reads
@@ -181,11 +188,14 @@ For anything that needs the real library locally, use the existing, safe flow
 (it rewrites the snapshot so it cannot reach Wahoo):
 
 ```sh
-DOMESTIQUE_DEV_SUBJECT="<subject>" DOCKER_HOST=ssh://domestique ./dev/setup.sh
+DOMESTIQUE_DEV_SUBJECT="<subject>" DOCKER_HOST=ssh://domestique ./dev/setup.sh |
+  grep -o 'DOMESTIQUE_DEV_SESSION=.*' > .local/dev/session_token
 ```
 
 That is a database read: it needs the same per-session approval. The snapshot
-lands in `.local/dev`; delete it with the worktree.
+lands in `.local/dev`, and its session token in `.local/dev/session_token`,
+which the `ui-dev` launch entry reads, so it never reaches captured output.
+Delete both with the worktree.
 
 ## Finishing
 
