@@ -34,7 +34,8 @@ Answer questions about the running production service from first-hand evidence.
 - **State database writes: ask every time**, even after reads were approved.
   The one exception is minting and revoking the debug session below.
 - Never print, copy off-host, or paste into chat: `secrets/*`, credentials,
-  tokens, route names, geometry. AGENTS.md's secrets rule applies to this
+  tokens, route names, geometry. The one off-host copy is the approved local
+  snapshot below. AGENTS.md's secrets rule applies to this
   session's output too.
 - Wahoo is on the sandbox tier (250 requests/day shared by all targets): prefer
   logs and local state over anything that triggers a Wahoo sync.
@@ -123,6 +124,7 @@ database (pre-approved), use it, and revoke it before finishing.
    (cd .local/live-debug-src && GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o ../live-session ./dev/session)
    want=$(ls .local/live-debug-src/internal/sqlite/migrations/*.up.sql | tail -1 | xargs basename | cut -d_ -f1)
    git worktree remove .local/live-debug-src
+   # q is the helper from "State database reads"; define it in this same call.
    q "SELECT max(version) FROM schema_migrations;"   # must equal $((10#$want)), or stop: minting would migrate
    scp .local/live-session domestique:/tmp/live-session
    ```
@@ -195,7 +197,9 @@ DOMESTIQUE_DEV_SUBJECT="<subject>" DOCKER_HOST=ssh://domestique ./dev/setup.sh |
 DOMESTIQUE_DEV_SESSION="$(cat .local/dev/session_token)" mise run ui-dev
 ```
 
-That is a database read: it needs the same per-session approval. The snapshot
+That is a database read, and it copies private route data off-host into the
+gitignored `.local/dev` before rewriting it: it needs the same per-session
+approval, named as such. The snapshot
 lands in `.local/dev`, and its session token in `.local/dev/session_token`,
 passed to `ui-dev` from there, so it never reaches captured output.
 Delete both with the worktree.
