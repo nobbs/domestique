@@ -164,6 +164,46 @@ func TestGetRiderProfileSuggestsTheBestAcrossTheCallersTargets(t *testing.T) {
 		"and the only one of the other")
 }
 
+// The FTP suggestion's date rides beside it, and only beside it: a rider with
+// none gets neither.
+func TestGetRiderProfileServesTheFunctionalThresholdPowerDate(t *testing.T) {
+	state := riderState()
+	from := activityClock().Add(-48 * time.Hour)
+	state.riderSuggestions["rider-a"] = rider.Suggestions{
+		FunctionalThresholdPowerWatts: rider.Set(255),
+		FunctionalThresholdPowerFrom:  from,
+	}
+	handler := riderHandler(t, state, "rider-a")
+
+	view := riderProfileOf(t, handler, authenticatedRequest(http.MethodGet, riderPath))
+	require.NotNil(t, view.Suggestions.FunctionalThresholdPowerFrom)
+	assert.True(t, from.Equal(*view.Suggestions.FunctionalThresholdPowerFrom), "the date was not the ride the suggestion came from")
+}
+
+// The Zwift FTP is read from its own store call, over the caller's own
+// subject, and served beside the ride-based suggestion, never applied to it.
+func TestGetRiderProfileServesTheZwiftFTP(t *testing.T) {
+	state := riderState()
+	readAt := activityClock().Add(-time.Hour)
+	state.riderZwiftFTP = map[string]rider.Value{"rider-a": rider.Set(249)}
+	state.riderZwiftReadAt = map[string]time.Time{"rider-a": readAt}
+	handler := riderHandler(t, state, "rider-a")
+
+	view := riderProfileOf(t, handler, authenticatedRequest(http.MethodGet, riderPath))
+	require.NotNil(t, view.Suggestions.Zwift)
+	assert.InDelta(t, 249.0, view.Suggestions.Zwift.FunctionalThresholdPowerWatts, 1e-9)
+	assert.True(t, readAt.Equal(view.Suggestions.Zwift.ReadAt))
+}
+
+// A rider who has never had a Zwift poll read an FTP gets no zwift object at
+// all, rather than one holding zeroes.
+func TestGetRiderProfileOmitsTheZwiftFTPWhenNoneIsStored(t *testing.T) {
+	handler := riderHandler(t, riderState(), "rider-a")
+
+	view := riderProfileOf(t, handler, authenticatedRequest(http.MethodGet, riderPath))
+	assert.Nil(t, view.Suggestions.Zwift)
+}
+
 // A rider with no target yet still reads their profile: the parameters are
 // theirs whether or not an account is connected.
 func TestGetRiderProfileAnswersARiderWithNoTarget(t *testing.T) {

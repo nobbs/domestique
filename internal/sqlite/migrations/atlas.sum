@@ -1,4 +1,4 @@
-h1:vL3ATQOB+pgXQ5gEKxDNrrUCWWEoC3+qmGuFvC9xEFo=
+h1:3glErekgsn1ofioOOs9DkO0v4lWFPK3CsU/Cakb6YMw=
 000027_current_schema.down.sql h1:4KgXME8ZJn+sr4MkT5LNmc4UZNykYRLmKebEulT8Sa0=
 000027_current_schema.up.sql h1:Nmnng6Kv5PVz6LlQI5QBUexc2FqZ0hVgo5Xyvu64VOA=
 000028_web_sessions.down.sql h1:BgNVP2FYbWjRhAn+flXvgtjGAdIYIJMryAfHJ77dsw0=
@@ -79,3 +79,5 @@ h1:vL3ATQOB+pgXQ5gEKxDNrrUCWWEoC3+qmGuFvC9xEFo=
 000065_source_sync_to_wahoo.up.sql h1:GSdRgHU/ggoSQxaC9OUA7sxgPyHytJ+MpsC3s/29Lq4=
 000066_activity_analysis_document.down.sql h1:jOJxxSKx7Y4Ath/SSjfxmBRgUie7hSL+BqfF/u5PHdg=
 000066_activity_analysis_document.up.sql h1:fWWyHFfCx2mAeCHwJTVZCRedHD2N0YZMegd4t8UUQGQ=
+000067_rider_zwift_profile.down.sql h1:xX08zu8fOhRwvOKYytBTHw7ScHYvYK9VLvSsjGTS9Cc=
+000067_rider_zwift_profile.up.sql h1:08klPJUv0AKNlnejV+8tUllKme2fEAXPf4Gm5s2+1lY=

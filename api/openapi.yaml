@@ -4330,7 +4330,9 @@ components:
       description: >-
         What the rider's rides of the last ninety days say some of these numbers
         could be, offered beside the controls and stored nowhere. A parameter no
-        ride carried a sensor for is absent rather than zero.
+        ride carried a sensor for is absent rather than zero. The FTP suggestion
+        alone falls back to the last twelve months when the ninety-day window
+        held no power.
       properties:
         maxHeartRateBpm:
           type: number
@@ -4346,9 +4348,35 @@ components:
           type: number
           description: >-
             The greater of two estimates: the best twenty-minute average power
-            taken at 95%, and a ramp-test estimate off the best minute.
+            taken at 95%, and a ramp-test estimate off the best minute. Read over
+            the last ninety days, or the last twelve months when those held none.
+        functionalThresholdPowerFrom:
+          type: string
+          format: date-time
+          description: >-
+            The start of the ride functionalThresholdPowerWatts was taken from.
+            Present only alongside that suggestion.
+        zwift:
+          $ref: '#/components/schemas/RiderZwiftSuggestion'
         stopping:
           $ref: '#/components/schemas/StoppingSuggestion'
+    RiderZwiftSuggestion:
+      type: object
+      additionalProperties: false
+      required:
+        - functionalThresholdPowerWatts
+        - readAt
+      description: >-
+        The FTP Zwift's own profile carried at the rider's last Zwift poll,
+        read from the profile response the poll already fetches and never by
+        a call this page makes. Absent when the rider has no Zwift credentials
+        or Zwift sent no positive FTP, and removed when the credentials are.
+      properties:
+        functionalThresholdPowerWatts:
+          type: number
+        readAt:
+          type: string
+          format: date-time
     StoppingSuggestion:
       type: object
       additionalProperties: false

@@ -870,6 +870,15 @@ The read-only JSON surface is small:
   parameter no ride carried a sensor for is absent rather than zero, and a
   rider with no target yet is answered with no suggestions.
 
+  The FTP suggestion alone reaches back twelve months when the ninety days held
+  no power — a rider whose only meter is an indoor trainer rides without one
+  all summer — and carries the start of the ride it came from, whichever window
+  supplied it. Beside it sits the FTP the caller's own Zwift profile held at the
+  last Zwift poll, with when that poll read it: offered, never applied, and
+  answered from the store — this path never calls Zwift. It is absent until a
+  poll has read a positive figure, and removing either Zwift credential removes
+  it.
+
   The stopping habit is the median and quartiles of stopped seconds per moving
   hour — elapsed time less moving time, over moving time — across the caller's
   own outdoor human-powered rides in that window, counting only rides of at
@@ -1548,7 +1557,10 @@ composed itself, never the provider's body verbatim. A Zwift account is reached
 with the rider's own credentials, held against their subject alone
 ([configuration.md](configuration.md)); a rider who has entered none is skipped,
 not failed, and a refused sign-in asks them for their password again rather than
-marking a grant for renewal.
+marking a grant for renewal. The profile request each sign-in already makes for
+the rider's player id also yields the FTP Zwift holds for them, which is stored
+against their subject with the time it was read, for the settings page to offer
+beside their own; nothing else that response carries is kept.
 
 A newly stored Zwift ride is also read for the name Zwift lists it under, the
 stable hash of what it was and how much of it was completed, from the account's

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"time"
 
 	openapi "github.com/nobbs/domestique/internal/httpapi/contract"
 	"github.com/nobbs/domestique/internal/rider"
@@ -95,6 +96,12 @@ func (h *Handler) writeRiderProfile(writer http.ResponseWriter, request *http.Re
 
 		return
 	}
+	zwiftFTP, zwiftReadAt, err := h.state.RiderZwiftFTP(ctx, identityOf(ctx).Subject)
+	if err != nil {
+		h.unavailable(writer)
+
+		return
+	}
 	h.writeJSON(writer, http.StatusOK, openapi.RiderProfile{
 		Profile: openapi.RiderParameters{
 			MaxHeartRateBpm:               profile.MaxHeartRateBPM.Pointer(),
@@ -110,6 +117,8 @@ func (h *Handler) writeRiderProfile(writer http.ResponseWriter, request *http.Re
 			MaxHeartRateBpm:               suggestions.MaxHeartRateBPM.Pointer(),
 			ThresholdHeartRateBpm:         suggestions.ThresholdHeartRateBPM.Pointer(),
 			FunctionalThresholdPowerWatts: suggestions.FunctionalThresholdPowerWatts.Pointer(),
+			FunctionalThresholdPowerFrom:  functionalThresholdPowerFrom(&suggestions),
+			Zwift:                         zwiftSuggestion(zwiftFTP, zwiftReadAt),
 			Stopping:                      stoppingSuggestion(suggestions.Stopping),
 		},
 		Zwift: openapi.RiderCredentialState{
@@ -223,6 +232,26 @@ func (h *Handler) ownTargetIDs(ctx context.Context) ([]string, error) {
 	}
 
 	return ids, nil
+}
+
+// functionalThresholdPowerFrom is only ever present alongside the suggestion
+// it dates.
+func functionalThresholdPowerFrom(suggestions *rider.Suggestions) *time.Time {
+	if !suggestions.FunctionalThresholdPowerWatts.Set {
+		return nil
+	}
+
+	return &suggestions.FunctionalThresholdPowerFrom
+}
+
+// zwiftSuggestion renders the FTP the last Zwift poll read, absent when the
+// rider has no Zwift credentials or Zwift sent no positive FTP.
+func zwiftSuggestion(watts rider.Value, readAt time.Time) *openapi.RiderZwiftSuggestion {
+	if !watts.Set {
+		return nil
+	}
+
+	return &openapi.RiderZwiftSuggestion{FunctionalThresholdPowerWatts: watts.Number, ReadAt: readAt}
 }
 
 // stoppingSuggestion renders the measured habit the way an optional object is

@@ -29,6 +29,10 @@ type fakeZwiftSource struct {
 	// would carry; an id absent from it is a document that named nothing.
 	workouts      map[int64]Workout
 	workoutsAsked []int64
+	// ftpWatts and ftpOK are what FunctionalThresholdPowerWatts reports; unset by
+	// default, the way an account with no positive Zwift FTP reads.
+	ftpWatts float64
+	ftpOK    bool
 }
 
 func (s *fakeZwiftSource) SignIn(_ context.Context, email, password []byte) (ZwiftReader, error) {
@@ -71,6 +75,8 @@ func (s *fakeZwiftSource) ActivityWorkout(_ context.Context, id int64) (Workout,
 	return workout, found, nil
 }
 
+func (s *fakeZwiftSource) FunctionalThresholdPowerWatts() (float64, bool) { return s.ftpWatts, s.ftpOK }
+
 func (s *fakeZwiftSource) IsUnauthorized(err error) bool { return errors.Is(err, errUnauthorized) }
 
 func (s *fakeZwiftSource) IsUnreadable(err error) bool { return errors.Is(err, errUnreadable) }
@@ -86,6 +92,7 @@ func zwiftSummaryID(summary Summary) int64 {
 }
 
 type fakeZwiftStore struct {
+	ftpErr         error
 	ownerErr       error
 	credentialsErr error
 	recordsErr     error
@@ -104,8 +111,16 @@ type fakeZwiftStore struct {
 	known          []int64
 	workoutsStored []storedWorkout
 	heldSince      []time.Time
+	ftpStored      []storedFTP
 	deleteCount    int
 	holds          bool
+}
+
+// storedFTP is one SetRiderZwiftFTP call the fake recorded.
+type storedFTP struct {
+	at      time.Time
+	subject string
+	watts   float64
 }
 
 // storedWorkout is one SetActivityWorkout call the fake recorded.
@@ -134,6 +149,15 @@ func (s *fakeZwiftStore) RiderZwiftCredentials(_ context.Context, _ string) (ema
 	}
 
 	return []byte(s.email), []byte(s.password), nil
+}
+
+func (s *fakeZwiftStore) SetRiderZwiftFTP(_ context.Context, subject string, watts float64, at time.Time) error {
+	if s.ftpErr != nil {
+		return s.ftpErr
+	}
+	s.ftpStored = append(s.ftpStored, storedFTP{subject: subject, watts: watts, at: at})
+
+	return nil
 }
 
 func (s *fakeZwiftStore) KnownActivityIDs(_ context.Context, _, _ string) ([]int64, error) {
@@ -521,6 +545,44 @@ func TestZwiftPollReportsEveryStateFailure(t *testing.T) {
 			assert.Equal(t, FailureState, result.Failure, "failure")
 		})
 	}
+}
+
+// A signed-in rider whose Zwift profile carries a positive FTP has it stored
+// against their own subject, dated to this poll.
+func TestZwiftPollStoresTheFTPAfterSignIn(t *testing.T) {
+	store := newFakeZwiftStore()
+	source := &fakeZwiftSource{ftpWatts: 249, ftpOK: true}
+
+	result := newTestZwiftPoller(t, source, store).Poll(t.Context(), "rider-a")
+
+	assert.Equal(t, Unchanged, result.Outcome)
+	require.Len(t, store.ftpStored, 1, "the ftp was stored")
+	assert.Equal(t, storedFTP{subject: "rider-a", watts: 249, at: pollNow()}, store.ftpStored[0])
+}
+
+// No positive FTP is no suggestion Zwift ever offered, so nothing overwrites
+// what is already stored.
+func TestZwiftPollStoresNothingWhenFTPIsAbsent(t *testing.T) {
+	store := newFakeZwiftStore()
+	source := &fakeZwiftSource{}
+
+	result := newTestZwiftPoller(t, source, store).Poll(t.Context(), "rider-a")
+
+	assert.Equal(t, Unchanged, result.Outcome)
+	assert.Empty(t, store.ftpStored)
+}
+
+// Storing the FTP is state like any other the poll writes: a failure there
+// stops the poll under the same category.
+func TestZwiftPollReportsAnFTPStoreFailure(t *testing.T) {
+	store := newFakeZwiftStore()
+	store.ftpErr = errUpstream
+	source := &fakeZwiftSource{ftpWatts: 249, ftpOK: true}
+
+	result := newTestZwiftPoller(t, source, store).Poll(t.Context(), "rider-a")
+
+	assert.Equal(t, Failed, result.Outcome)
+	assert.Equal(t, FailureState, result.Failure)
 }
 
 // The records budget bounds one run: the fill under way finishes, and the next

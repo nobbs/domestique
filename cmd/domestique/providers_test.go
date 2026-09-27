@@ -340,6 +340,58 @@ func TestZwiftProviderListsCyclingAsIndoorVirtualRides(t *testing.T) {
 
 // ActivityWorkout reads back a ride's name, hash and completion, and reports a nameless
 // ride -- whose response carries no name -- as not found.
+// SignIn's one profile call already carries the FTP; the reader exposes it
+// without a second request.
+func TestZwiftReaderExposesTheFTPFromSignIn(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		switch request.URL.Path {
+		case "/auth/realms/zwift/tokens/access/codes":
+			writeTestJSON(t, writer, map[string]any{
+				"access_token": "access-token", "refresh_token": "refresh-token", "expires_in": 3600,
+			})
+		case "/api/profiles/me":
+			writeTestJSON(t, writer, map[string]any{"id": 4711, "ftp": 249})
+		default:
+			writer.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	reader, err := newZwiftTestProvider(t, server).SignIn(t.Context(), []byte("rider@example.test"), []byte("hunter2"))
+	require.NoError(t, err, "SignIn()")
+
+	watts, ok := reader.FunctionalThresholdPowerWatts()
+	assert.True(t, ok, "ok")
+	assert.InDelta(t, 249, watts, 0, "watts")
+}
+
+// A profile with no ftp field, or zero, is no suggestion Zwift ever offered.
+func TestZwiftReaderReportsNoFTPAsAbsent(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		switch request.URL.Path {
+		case "/auth/realms/zwift/tokens/access/codes":
+			writeTestJSON(t, writer, map[string]any{
+				"access_token": "access-token", "refresh_token": "refresh-token", "expires_in": 3600,
+			})
+		case "/api/profiles/me":
+			writeTestJSON(t, writer, map[string]any{"id": 4711})
+		default:
+			writer.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	reader, err := newZwiftTestProvider(t, server).SignIn(t.Context(), []byte("rider@example.test"), []byte("hunter2"))
+	require.NoError(t, err, "SignIn()")
+
+	_, ok := reader.FunctionalThresholdPowerWatts()
+	assert.False(t, ok, "ok")
+}
+
 func TestZwiftReaderActivityWorkoutReadsOrReportsAFreeRide(t *testing.T) {
 	t.Parallel()
 
@@ -436,7 +488,7 @@ func TestZwiftProviderReportsAProfileThatCouldNotBeRead(t *testing.T) {
 	defer server.Close()
 
 	_, err := newZwiftTestProvider(t, server).SignIn(t.Context(), []byte("rider@example.test"), []byte("hunter2"))
-	require.ErrorContains(t, err, "reading the Zwift player id")
+	require.ErrorContains(t, err, "reading the Zwift profile")
 }
 
 func TestZwiftProviderReportsAListingThatFailed(t *testing.T) {

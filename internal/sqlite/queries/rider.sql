@@ -34,6 +34,15 @@ WHERE a.started_at_unix >= sqlc.arg(since_unix)
   AND (r.heart_rate_bpm IS NOT NULL OR r.power_watts IS NOT NULL)
 ORDER BY r.target_slot, r.workout_id, r.record_index;
 
+-- name: ListActivityPowerSamples :many
+SELECT r.target_slot, r.workout_id, r.recorded_at_unix, r.power_watts
+FROM activity_records AS r
+JOIN activities AS a ON a.target_slot = r.target_slot AND a.workout_id = r.workout_id
+WHERE a.started_at_unix >= sqlc.arg(since_unix)
+  AND r.target_slot IN (sqlc.slice(target_slots))
+  AND r.power_watts IS NOT NULL
+ORDER BY r.target_slot, r.workout_id, r.record_index;
+
 -- name: ListRiderCredentials :many
 SELECT name, value FROM rider_credentials WHERE subject = ?;
 
@@ -53,3 +62,15 @@ FROM activities
 WHERE started_at_unix >= sqlc.arg(since_unix)
   AND target_slot IN (sqlc.slice(target_slots))
   AND workout_type_id IN (sqlc.slice(workout_type_ids));
+
+-- name: UpsertRiderZwiftFTP :exec
+INSERT INTO rider_zwift_profiles (subject, ftp_watts, read_at_unix)
+VALUES (?, ?, ?)
+ON CONFLICT(subject) DO UPDATE SET ftp_watts = excluded.ftp_watts,
+  read_at_unix = excluded.read_at_unix;
+
+-- name: GetRiderZwiftFTP :one
+SELECT ftp_watts, read_at_unix FROM rider_zwift_profiles WHERE subject = ?;
+
+-- name: DeleteRiderZwiftFTP :exec
+DELETE FROM rider_zwift_profiles WHERE subject = ?;

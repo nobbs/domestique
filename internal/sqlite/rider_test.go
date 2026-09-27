@@ -552,3 +552,94 @@ func TestRiderZwiftCredentialsReadsBothNames(t *testing.T) {
 	assert.Equal(t, []byte("rider@example.test"), email)
 	assert.Equal(t, []byte("hunter2"), password)
 }
+
+// rideAt stores one ride starting at starts, held steady for twenty-five
+// minutes at the given heart rate and power.
+func rideAt(t *testing.T, store *Store, id int64, starts time.Time, heartRate, power float64) {
+	t.Helper()
+	require.NoError(t, store.StoreActivity(t.Context(), "rider-a",
+		activity.Listing{ID: id, TypeID: 15, LocationID: 1, Starts: starts},
+		activity.Summary{DistanceMetres: 1000, MovingSeconds: 1500, ElapsedSeconds: 1500, Raw: []byte(`{}`)},
+		starts,
+	), "StoreActivity()")
+	fit := steady(1500, heartRate, power)
+	for index := range fit.Records {
+		fit.Records[index].Time = starts.Add(time.Duration(index) * time.Second)
+	}
+	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", id, fit, activity.RecordsVersion),
+		"StoreActivityRecords()")
+}
+
+func TestRiderSuggestionsDateTheFTPToItsRide(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testKey(1))
+	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
+	rideAt(t, store, 1, activityNow().Add(-48*time.Hour), 150, 200)
+	rideAt(t, store, 2, activityNow().Add(-24*time.Hour), 150, 240)
+
+	suggestions, err := store.RiderSuggestions(t.Context(), []string{"rider-a"}, nil, activityNow().Add(-rider.SuggestionWindow))
+	require.NoError(t, err, "RiderSuggestions()")
+	assert.InDelta(t, 228.0, suggestions.FunctionalThresholdPowerWatts.Number, 0.5, "the harder ride")
+	assert.True(t, activityNow().Add(-24*time.Hour).Equal(suggestions.FunctionalThresholdPowerFrom),
+		"dated to the harder ride, not the last one read")
+}
+
+// A trainer-only rider has no power all summer: the FTP alone reaches back a
+// year, dated so the page can say how old it is, while the rest stay recent.
+func TestRiderSuggestionsFallBackToAYearForTheFTPAlone(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testKey(1))
+	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
+	winter := activityNow().Add(-200 * 24 * time.Hour)
+	rideAt(t, store, 1, winter, 190, 240)
+	rideAt(t, store, 2, activityNow(), 150, 0)
+
+	suggestions, err := store.RiderSuggestions(t.Context(), []string{"rider-a"}, nil, activityNow().Add(-rider.SuggestionWindow))
+	require.NoError(t, err, "RiderSuggestions()")
+	assert.InDelta(t, 228.0, suggestions.FunctionalThresholdPowerWatts.Number, 0.5, "the winter ride's twenty at 95%")
+	assert.True(t, winter.Equal(suggestions.FunctionalThresholdPowerFrom), "dated to the winter ride")
+	assert.InDelta(t, 150.0, suggestions.MaxHeartRateBPM.Number, 0.5, "heart rate stays within the recent window")
+}
+
+func TestRiderSuggestionsOfferNoFTPOlderThanAYear(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testKey(1))
+	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
+	rideAt(t, store, 1, activityNow().Add(-400*24*time.Hour), 190, 240)
+
+	suggestions, err := store.RiderSuggestions(t.Context(), []string{"rider-a"}, nil, activityNow().Add(-rider.SuggestionWindow))
+	require.NoError(t, err, "RiderSuggestions()")
+	assert.False(t, suggestions.FunctionalThresholdPowerWatts.Set, "no power in a year")
+	assert.True(t, suggestions.FunctionalThresholdPowerFrom.IsZero(), "and so no date")
+}
+
+func TestRiderZwiftFTPRoundTripsAndLeavesWithTheCredentials(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testKey(1))
+	watts, _, err := store.RiderZwiftFTP(t.Context(), "rider-a")
+	require.NoError(t, err, "RiderZwiftFTP() before any poll")
+	assert.False(t, watts.Set, "nothing read yet")
+
+	require.NoError(t, store.SetRiderCredentials(t.Context(), "rider-a", map[rider.CredentialName]rider.Credential{
+		rider.CredentialZwiftEmail:    rider.NewCredential([]byte("rider@example.test")),
+		rider.CredentialZwiftPassword: rider.NewCredential([]byte("secret")),
+	}), "SetRiderCredentials()")
+	require.NoError(t, store.SetRiderZwiftFTP(t.Context(), "rider-a", 240, activityNow()), "SetRiderZwiftFTP()")
+	require.NoError(t, store.SetRiderZwiftFTP(t.Context(), "rider-a", 249, activityNow().Add(time.Hour)), "SetRiderZwiftFTP() again")
+	require.NoError(t, store.SetRiderZwiftFTP(t.Context(), "rider-b", 180, activityNow()), "SetRiderZwiftFTP(rider-b)")
+
+	watts, readAt, err := store.RiderZwiftFTP(t.Context(), "rider-a")
+	require.NoError(t, err, "RiderZwiftFTP()")
+	assert.InDelta(t, 249.0, watts.Number, 0.001, "the latest read")
+	assert.True(t, activityNow().Add(time.Hour).Equal(readAt), "and when it was read")
+
+	require.NoError(t, store.SetRiderCredentials(t.Context(), "rider-a", map[rider.CredentialName]rider.Credential{
+		rider.CredentialZwiftPassword: {},
+	}), "SetRiderCredentials() removing the password")
+	watts, _, err = store.RiderZwiftFTP(t.Context(), "rider-a")
+	require.NoError(t, err, "RiderZwiftFTP() after removal")
+	assert.False(t, watts.Set, "removed with the credentials")
+	other, _, err := store.RiderZwiftFTP(t.Context(), "rider-b")
+	require.NoError(t, err)
+	assert.True(t, other.Set, "another rider's is untouched")
+}

@@ -101,6 +101,13 @@ func (s *Store) SetRiderCredentials(
 				}); err != nil {
 					return fmt.Errorf("clearing a rider credential: %w", err)
 				}
+				// The stored Zwift FTP is read from this account; without it the
+				// figure is no longer this rider's to show.
+				if name == rider.CredentialZwiftEmail || name == rider.CredentialZwiftPassword {
+					if err := queries.DeleteRiderZwiftFTP(ctx, subject); err != nil {
+						return fmt.Errorf("clearing the rider's zwift ftp: %w", err)
+					}
+				}
 				continue
 			}
 			ciphertext, encryptErr := s.encrypt(riderCredentialAD(subject, name), credential.Bytes())
@@ -143,9 +150,37 @@ func (s *Store) RiderSuggestions(
 		return rider.Suggestions{}, fmt.Errorf("reading the recorded samples: %w", err)
 	}
 	suggestions := accumulateSuggestions(rows)
+	if !suggestions.FunctionalThresholdPowerWatts.Set {
+		// Pushed further back from the same cutoff by how much longer the
+		// fallback window is, so it needs no second clock parameter of its own.
+		fallbackSince := since.Add(rider.SuggestionWindow - rider.FunctionalThresholdPowerFallbackWindow)
+		watts, from, fallbackErr := s.riderFallbackFTP(ctx, targetIDs, fallbackSince)
+		if fallbackErr != nil {
+			return rider.Suggestions{}, fallbackErr
+		}
+		suggestions.FunctionalThresholdPowerWatts, suggestions.FunctionalThresholdPowerFrom = watts, from
+	}
 	suggestions.Stopping = stopping
 
 	return suggestions, nil
+}
+
+// riderFallbackFTP re-scans power alone over the fallback window, for a rider
+// whose SuggestionWindow held none: an indoor-only rider can go half a year
+// without an outdoor power ride.
+func (s *Store) riderFallbackFTP(
+	ctx context.Context, targetIDs []string, since time.Time,
+) (rider.Value, time.Time, error) {
+	rows, err := s.queries.ListActivityPowerSamples(ctx, sqlcgen.ListActivityPowerSamplesParams{
+		SinceUnix:   since.Unix(),
+		TargetSlots: targetIDs,
+	})
+	if err != nil {
+		return rider.Value{}, time.Time{}, fmt.Errorf("reading the recorded power samples: %w", err)
+	}
+	watts, from := accumulateFallbackFTP(rows)
+
+	return watts, from, nil
 }
 
 // riderStopping reads the habit off the summaries of the rider's own rides of
@@ -198,6 +233,7 @@ func accumulateSuggestions(rows []sqlcgen.ListActivitySensorSamplesRow) rider.Su
 	suggestions := rider.Suggestions{}
 	var heartRate, power sensorSeries
 	var ride struct {
+		firstAt    time.Time
 		targetSlot string
 		workoutID  int64
 	}
@@ -206,14 +242,16 @@ func accumulateSuggestions(rows []sqlcgen.ListActivitySensorSamplesRow) rider.Su
 		// Unscaled: the heart rate over that window is itself the LTHR estimate,
 		// not a figure some share is taken of.
 		heartRate.best(rider.ThresholdHeartRateWindow, &suggestions.ThresholdHeartRateBPM, nil)
-		power.best(rider.ThresholdPowerWindow, &suggestions.FunctionalThresholdPowerWatts, rider.ThresholdPower)
-		power.ramp(&suggestions.FunctionalThresholdPowerWatts)
+		if power.threshold(&suggestions.FunctionalThresholdPowerWatts) {
+			suggestions.FunctionalThresholdPowerFrom = ride.firstAt
+		}
 		heartRate, power = sensorSeries{}, sensorSeries{}
 	}
 	for index, row := range rows {
 		if index == 0 || row.WorkoutID != ride.workoutID || row.TargetSlot != ride.targetSlot {
 			closeRide()
 			ride.targetSlot, ride.workoutID = row.TargetSlot, row.WorkoutID
+			ride.firstAt = time.Unix(row.RecordedAtUnix, 0).UTC()
 		}
 		at := time.Unix(row.RecordedAtUnix, 0).UTC()
 		heartRate.add(at, beating(row.HeartRateBpm))
@@ -222,6 +260,35 @@ func accumulateSuggestions(rows []sqlcgen.ListActivitySensorSamplesRow) rider.Su
 	closeRide()
 
 	return suggestions
+}
+
+// accumulateFallbackFTP folds only the FTP suggestion from power-only rows,
+// the same rule accumulateSuggestions applies to power, and reports the ride
+// it came from.
+func accumulateFallbackFTP(rows []sqlcgen.ListActivityPowerSamplesRow) (watts rider.Value, from time.Time) {
+	var power sensorSeries
+	var ride struct {
+		firstAt    time.Time
+		targetSlot string
+		workoutID  int64
+	}
+	closeRide := func() {
+		if power.threshold(&watts) {
+			from = ride.firstAt
+		}
+		power = sensorSeries{}
+	}
+	for index, row := range rows {
+		if index == 0 || row.WorkoutID != ride.workoutID || row.TargetSlot != ride.targetSlot {
+			closeRide()
+			ride.targetSlot, ride.workoutID = row.TargetSlot, row.WorkoutID
+			ride.firstAt = time.Unix(row.RecordedAtUnix, 0).UTC()
+		}
+		power.add(time.Unix(row.RecordedAtUnix, 0).UTC(), row.PowerWatts)
+	}
+	closeRide()
+
+	return watts, from
 }
 
 // beating drops a heart rate that is not one. An unpaired strap writes nought,
@@ -253,32 +320,50 @@ func (s *sensorSeries) add(at time.Time, value sql.NullFloat64) {
 }
 
 // best keeps the series' own best window if it beats what is already held,
-// scaled by derive when the suggestion is not the effort itself.
-func (s *sensorSeries) best(window time.Duration, into *rider.Value, derive func(float64) float64) {
+// scaled by derive when the suggestion is not the effort itself, and reports
+// whether it did.
+func (s *sensorSeries) best(window time.Duration, into *rider.Value, derive func(float64) float64) bool {
 	mean, ok := rider.BestAverage(s.times, s.values, window)
 	if !ok {
-		return
+		return false
 	}
 	if derive != nil {
 		mean = derive(mean)
 	}
 	if !into.Set || mean > into.Number {
 		*into = rider.Set(mean)
+
+		return true
 	}
+
+	return false
+}
+
+// threshold keeps the better of this power series' two FTP estimates, and
+// reports whether either beat what was already held.
+func (s *sensorSeries) threshold(into *rider.Value) bool {
+	twenty := s.best(rider.ThresholdPowerWindow, into, rider.ThresholdPower)
+	ramp := s.ramp(into)
+
+	return twenty || ramp
 }
 
 // ramp keeps the estimate a ride shaped like a ramp test implies. Both it and
 // the twenty-minute estimate are floors on the same number, true only of a
 // rider who actually rode that protocol, so the higher stands whichever test
-// they ran.
-func (s *sensorSeries) ramp(into *rider.Value) {
+// they ran. It reports whether it replaced what was held.
+func (s *sensorSeries) ramp(into *rider.Value) bool {
 	watts, ok := rider.RampThresholdPower(s.times, s.values)
 	if !ok {
-		return
+		return false
 	}
 	if !into.Set || watts > into.Number {
 		*into = rider.Set(watts)
+
+		return true
 	}
+
+	return false
 }
 
 func riderValue(value sql.NullFloat64) rider.Value {
@@ -302,4 +387,30 @@ func (s *Store) RiderZwiftCredentials(ctx context.Context, subject string) (emai
 	}
 
 	return credentials[rider.CredentialZwiftEmail].Bytes(), credentials[rider.CredentialZwiftPassword].Bytes(), nil
+}
+
+// SetRiderZwiftFTP records the FTP a Zwift poll's sign-in read from the
+// rider's own profile, and when it was read.
+func (s *Store) SetRiderZwiftFTP(ctx context.Context, subject string, watts float64, at time.Time) error {
+	if err := s.queries.UpsertRiderZwiftFTP(ctx, sqlcgen.UpsertRiderZwiftFTPParams{
+		Subject: subject, FtpWatts: watts, ReadAtUnix: at.Unix(),
+	}); err != nil {
+		return fmt.Errorf("storing the rider's zwift ftp: %w", err)
+	}
+
+	return nil
+}
+
+// RiderZwiftFTP reads the FTP the last Zwift poll found, and when it read it.
+// Unset when the rider has never connected Zwift or Zwift sent none.
+func (s *Store) RiderZwiftFTP(ctx context.Context, subject string) (rider.Value, time.Time, error) {
+	row, err := s.queries.GetRiderZwiftFTP(ctx, subject)
+	if errors.Is(err, sql.ErrNoRows) {
+		return rider.Value{}, time.Time{}, nil
+	}
+	if err != nil {
+		return rider.Value{}, time.Time{}, fmt.Errorf("reading the rider's zwift ftp: %w", err)
+	}
+
+	return rider.Set(row.FtpWatts), time.Unix(row.ReadAtUnix, 0).UTC(), nil
 }

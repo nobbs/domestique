@@ -2468,6 +2468,7 @@ type phaseRun struct {
 }
 
 type fakeState struct {
+	riderZwiftFTPErr     error
 	reprocessErr         error
 	pendingAuthErr       error
 	historyErr           error
@@ -2497,6 +2498,8 @@ type fakeState struct {
 	activities           map[string][]activities.Stored
 	activitiesErr        error
 	tracks               map[string][]activities.TrackPoint
+	riderZwiftFTP        map[string]rider.Value
+	riderZwiftReadAt     map[string]time.Time
 	sampleRows           map[string][]activities.SampleRow
 	sampleRowsErr        error
 	rideSamples          map[string]activities.RideSamples
@@ -2814,6 +2817,16 @@ func (s *fakeState) RouteClimbAttempts(
 	return s.climbAttempts[key], nil
 }
 
+// RiderZwiftFTP reports what the test stored for this subject, unset for a
+// subject that stored none.
+func (s *fakeState) RiderZwiftFTP(_ context.Context, subject string) (rider.Value, time.Time, error) {
+	if s.riderZwiftFTPErr != nil {
+		return rider.Value{}, time.Time{}, s.riderZwiftFTPErr
+	}
+
+	return s.riderZwiftFTP[subject], s.riderZwiftReadAt[subject], nil
+}
+
 // RiderSuggestions records which targets and which cutoff it was asked over, so
 // a test can assert the scope the handler read rather than only the answer.
 func (s *fakeState) RiderSuggestions(
@@ -2832,7 +2845,11 @@ func (s *fakeState) RiderSuggestions(
 		held := s.riderSuggestions[targetID]
 		keepHigher(&suggestions.MaxHeartRateBPM, held.MaxHeartRateBPM)
 		keepHigher(&suggestions.ThresholdHeartRateBPM, held.ThresholdHeartRateBPM)
-		keepHigher(&suggestions.FunctionalThresholdPowerWatts, held.FunctionalThresholdPowerWatts)
+		if held.FunctionalThresholdPowerWatts.Set && (!suggestions.FunctionalThresholdPowerWatts.Set ||
+			held.FunctionalThresholdPowerWatts.Number > suggestions.FunctionalThresholdPowerWatts.Number) {
+			suggestions.FunctionalThresholdPowerWatts = held.FunctionalThresholdPowerWatts
+			suggestions.FunctionalThresholdPowerFrom = held.FunctionalThresholdPowerFrom
+		}
 		// One habit is read across every target at once, so the fake keeps the
 		// first rather than letting the order of targetIDs decide.
 		if held.Stopping.Set && !suggestions.Stopping.Set {

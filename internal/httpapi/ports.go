@@ -318,6 +318,10 @@ type RiderProfileState interface {
 	// SetRiderCredentials writes only the names it is given; an unset value
 	// removes that name.
 	SetRiderCredentials(ctx context.Context, subject string, credentials map[rider.CredentialName]rider.Credential) error
+	// RiderZwiftFTP reads the FTP the last Zwift poll found in the rider's own
+	// profile, and when it read it. Unset when the rider has never connected
+	// Zwift or Zwift sent none.
+	RiderZwiftFTP(ctx context.Context, subject string) (watts rider.Value, readAt time.Time, err error)
 }
 
 // ActivityState is what a poll recorded about each target's rides. The

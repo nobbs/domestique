@@ -25,6 +25,15 @@ func (q *Queries) DeleteRiderCredential(ctx context.Context, arg DeleteRiderCred
 	return err
 }
 
+const deleteRiderZwiftFTP = `-- name: DeleteRiderZwiftFTP :exec
+DELETE FROM rider_zwift_profiles WHERE subject = ?
+`
+
+func (q *Queries) DeleteRiderZwiftFTP(ctx context.Context, subject string) error {
+	_, err := q.db.ExecContext(ctx, deleteRiderZwiftFTP, subject)
+	return err
+}
+
 const getRiderProfile = `-- name: GetRiderProfile :one
 SELECT max_heart_rate_bpm, resting_heart_rate_bpm, threshold_heart_rate_bpm,
   functional_threshold_power_watts, rider_mass_kg, bike_mass_kg,
@@ -58,6 +67,83 @@ func (q *Queries) GetRiderProfile(ctx context.Context, subject string) (GetRider
 		&i.RollingResistance,
 	)
 	return i, err
+}
+
+const getRiderZwiftFTP = `-- name: GetRiderZwiftFTP :one
+SELECT ftp_watts, read_at_unix FROM rider_zwift_profiles WHERE subject = ?
+`
+
+type GetRiderZwiftFTPRow struct {
+	FtpWatts   float64
+	ReadAtUnix int64
+}
+
+func (q *Queries) GetRiderZwiftFTP(ctx context.Context, subject string) (GetRiderZwiftFTPRow, error) {
+	row := q.db.QueryRowContext(ctx, getRiderZwiftFTP, subject)
+	var i GetRiderZwiftFTPRow
+	err := row.Scan(&i.FtpWatts, &i.ReadAtUnix)
+	return i, err
+}
+
+const listActivityPowerSamples = `-- name: ListActivityPowerSamples :many
+SELECT r.target_slot, r.workout_id, r.recorded_at_unix, r.power_watts
+FROM activity_records AS r
+JOIN activities AS a ON a.target_slot = r.target_slot AND a.workout_id = r.workout_id
+WHERE a.started_at_unix >= ?1
+  AND r.target_slot IN (/*SLICE:target_slots*/?)
+  AND r.power_watts IS NOT NULL
+ORDER BY r.target_slot, r.workout_id, r.record_index
+`
+
+type ListActivityPowerSamplesParams struct {
+	SinceUnix   int64
+	TargetSlots []string
+}
+
+type ListActivityPowerSamplesRow struct {
+	TargetSlot     string
+	WorkoutID      int64
+	RecordedAtUnix int64
+	PowerWatts     sql.NullFloat64
+}
+
+func (q *Queries) ListActivityPowerSamples(ctx context.Context, arg ListActivityPowerSamplesParams) ([]ListActivityPowerSamplesRow, error) {
+	query := listActivityPowerSamples
+	var queryParams []interface{}
+	queryParams = append(queryParams, arg.SinceUnix)
+	if len(arg.TargetSlots) > 0 {
+		for _, v := range arg.TargetSlots {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:target_slots*/?", strings.Repeat(",?", len(arg.TargetSlots))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:target_slots*/?", "NULL", 1)
+	}
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListActivityPowerSamplesRow{}
+	for rows.Next() {
+		var i ListActivityPowerSamplesRow
+		if err := rows.Scan(
+			&i.TargetSlot,
+			&i.WorkoutID,
+			&i.RecordedAtUnix,
+			&i.PowerWatts,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listActivitySensorSamples = `-- name: ListActivitySensorSamples :many
@@ -289,5 +375,23 @@ func (q *Queries) UpsertRiderProfile(ctx context.Context, arg UpsertRiderProfile
 		arg.RollingResistance,
 		arg.UpdatedAtUnix,
 	)
+	return err
+}
+
+const upsertRiderZwiftFTP = `-- name: UpsertRiderZwiftFTP :exec
+INSERT INTO rider_zwift_profiles (subject, ftp_watts, read_at_unix)
+VALUES (?, ?, ?)
+ON CONFLICT(subject) DO UPDATE SET ftp_watts = excluded.ftp_watts,
+  read_at_unix = excluded.read_at_unix
+`
+
+type UpsertRiderZwiftFTPParams struct {
+	Subject    string
+	FtpWatts   float64
+	ReadAtUnix int64
+}
+
+func (q *Queries) UpsertRiderZwiftFTP(ctx context.Context, arg UpsertRiderZwiftFTPParams) error {
+	_, err := q.db.ExecContext(ctx, upsertRiderZwiftFTP, arg.Subject, arg.FtpWatts, arg.ReadAtUnix)
 	return err
 }

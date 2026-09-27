@@ -94,6 +94,36 @@ describe("RiderProfile", () => {
     expect(screen.getByLabelText("Maximum heart rate (bpm)")).toHaveValue(183);
   });
 
+  // Two figures beside FTP, each taken on its own: the rider's dated ride and
+  // what Zwift holds. Neither is applied until the rider picks one.
+  it("offers the dated ride estimate and Zwift's FTP side by side", async () => {
+    show({
+      profile: { functionalThresholdPowerWatts: 249 },
+      suggestions: {
+        functionalThresholdPowerWatts: 194.8,
+        functionalThresholdPowerFrom: "2025-12-03T17:00:00Z",
+        zwift: { functionalThresholdPowerWatts: 249, readAt: "2026-09-27T12:00:00Z" },
+      },
+      zwift: { emailSet: true, passwordSet: true },
+      wahoo: { emailSet: false, passwordSet: false, signInRefused: false },
+    });
+
+    expect(
+      screen.getByText(/Your ride of .*2025 suggests 195 W\. Zwift holds 249 W\./),
+    ).toBeInTheDocument();
+    const field = screen.getByLabelText("Functional threshold power (W)");
+    expect(field).toHaveValue(249);
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "Use the suggested functional threshold power, 195 W" }),
+    );
+    expect(field).toHaveValue(195);
+    await userEvent.click(
+      screen.getByRole("button", { name: "Use Zwift's functional threshold power, 249 W" }),
+    );
+    expect(field).toHaveValue(249);
+  });
+
   it("sends the whole profile, leaving out a box the rider cleared", async () => {
     const fetchMock = vi.fn(
       async (_input: RequestInfo | URL, _init?: RequestInit) =>
