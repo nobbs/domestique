@@ -10,3 +10,11 @@ export function useAdmin(): boolean {
 
   return data?.identity.admin ?? false;
 }
+
+/** Restores the admin's own session; a refusal lands on sign-in either way. */
+export async function stopImpersonating(): Promise<void> {
+  await fetch("/auth/impersonate/stop", { method: "POST", credentials: "same-origin" }).catch(
+    () => undefined,
+  );
+  window.location.assign("/");
+}

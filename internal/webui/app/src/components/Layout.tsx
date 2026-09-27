@@ -7,6 +7,7 @@ import {
   DrawerTrigger,
 } from "@/components/ui/drawer";
 import { useNarrowViewport } from "../lib/mediaQuery";
+import { ImpersonationBanner } from "./ImpersonationBanner";
 import { MenuBar } from "./MenuBar";
 
 export interface LayoutProps {
@@ -59,6 +60,7 @@ export function Layout({
      */
     <div className="flex h-dvh flex-col bg-[var(--ground)] text-[var(--ink)]">
       <MenuBar />
+      <ImpersonationBanner />
       <main className="relative isolate flex min-h-0 flex-1 overflow-hidden">
         {workspace === "sidebar" && !narrow ? (
           <aside
@@ -132,7 +134,11 @@ export function Layout({
 export function PageShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex min-h-dvh flex-col bg-[var(--base)] text-[var(--ink)]">
-      <MenuBar />
+      {/* One sticky block, so the banner stays under the bar as the page scrolls. */}
+      <div className="sticky top-0 z-40">
+        <MenuBar />
+        <ImpersonationBanner />
+      </div>
       <main className="flex-1 px-4 py-6 sm:px-6 sm:py-8">{children}</main>
     </div>
   );

@@ -6,6 +6,7 @@ import { useNarrowViewport } from "../lib/mediaQuery";
 
 vi.mock("../lib/mediaQuery", () => ({ useNarrowViewport: vi.fn() }));
 vi.mock("./MenuBar", () => ({ MenuBar: () => <span>Domestique</span> }));
+vi.mock("./ImpersonationBanner", () => ({ ImpersonationBanner: () => null }));
 
 const { Layout } = await import("./Layout");
 

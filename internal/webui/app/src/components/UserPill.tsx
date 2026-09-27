@@ -30,6 +30,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { statusQuery, webUIConfigQuery } from "../api/queries";
+import { stopImpersonating } from "../lib/identity";
 import { type StateTone, syncState } from "../lib/syncState";
 import { Button } from "./Button";
 
@@ -57,14 +58,6 @@ async function impersonate(subject: string): Promise<void> {
   if (response?.ok) {
     window.location.assign("/");
   }
-}
-
-/** Restores the admin's own session; a refusal lands on sign-in either way. */
-async function stopImpersonating(): Promise<void> {
-  await fetch("/auth/impersonate/stop", { method: "POST", credentials: "same-origin" }).catch(
-    () => undefined,
-  );
-  window.location.assign("/");
 }
 
 /**
