@@ -34,8 +34,9 @@ Answer questions about the running production service from first-hand evidence.
 - **State database writes: ask every time**, even after reads were approved.
   The one exception is minting and revoking the debug session below.
 - Never print, copy off-host, or paste into chat: `secrets/*`, credentials,
-  tokens, route names, geometry. The one off-host copy is the approved local
-  snapshot below. AGENTS.md's secrets rule applies to this
+  tokens, route names, geometry. The exceptions are the approved local snapshot
+  below and the debug session token, kept in `.local/live-debug` until revoked.
+  Sidecar images are pinned by digest; bump a digest deliberately, never to a tag. AGENTS.md's secrets rule applies to this
   session's output too.
 - Wahoo is on the sandbox tier (250 requests/day shared by all targets): prefer
   logs and local state over anything that triggers a Wahoo sync.
@@ -135,7 +136,7 @@ database (pre-approved), use it, and revoke it before finishing.
    ```sh
    TOKEN=$(ssh domestique 'docker run --rm --user 65532:65532 \
      -v domestique_domestique-state:/var/lib/domestique \
-     -v /tmp/live-session:/live-session:ro busybox:latest \
+     -v /tmp/live-session:/live-session:ro busybox@sha256:dc2d74b28e4cf8984fa52af1f39bc7c3d9c73760b41a74d629f5d11b1ab28616 \
      /live-session -database /var/lib/domestique/state.db -subject "<subject>" -admin')
    ```
 
@@ -176,7 +177,7 @@ second writer-capable process. That output is off-host data too: select
 aggregates and ids, never names, geometry, or ciphertext.
 
 ```sh
-q() { ssh domestique "docker run --rm -i -v domestique_domestique-state:/data:ro alpine:3 sh -c '
+q() { ssh domestique "docker run --rm -i -v domestique_domestique-state:/data:ro alpine@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b sh -c '
   apk add -q sqlite >/dev/null && cp /data/state.db* /tmp/ && sqlite3 -readonly -box /tmp/state.db'" <<<"$1"; }
 q "SELECT version FROM schema_migrations ORDER BY version DESC LIMIT 1;"
 ```
