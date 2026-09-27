@@ -1,4 +1,11 @@
 {
+  "permissions": {
+    "allow": [
+      "Bash(ssh domestique:*)",
+      "Bash(DOCKER_HOST=ssh://domestique docker:*)",
+      "Bash(scp .local/live-session domestique:/tmp/live-session)"
+    ]
+  },
   "hooks": {
     "SessionStart": [
       {
