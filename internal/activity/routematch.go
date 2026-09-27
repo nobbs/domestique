@@ -31,13 +31,8 @@ const (
 	// ride was that route rather than a day out taking it in on the way, which
 	// would put a six-hour ride in a short route's history.
 	//
-	// Fitted to the operator's own judgement over 89 decided rides, and swept
-	// against every share from 0.85 to 0.95: this is the last one at which no
-	// ride clears the gate against two routes at once, so the order below never
-	// has to settle anything. Loosening it admits rides that merely followed
-	// most of a route and brings contested rides with them; tightening it starts
-	// refusing rides the operator called their own. The margin below one is what
-	// a closure detour and a commute either side cost.
+	// Fitted to the operator's own judgement over 89 decided rides. Stages over
+	// the same roads still both clear it, and beats settles which is recorded.
 	minimumRouteCoverage = 0.92
 	minimumRideCoverage  = 0.92
 
