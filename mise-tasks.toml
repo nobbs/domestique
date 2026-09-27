@@ -178,6 +178,10 @@ run = "go run ./dev/levelstudy"
 description = "Judge a normalized power of the estimated power series offline"
 run = "go run ./dev/npstudy"
 
+[match-study]
+description = "Measure what the route matcher's acceptance band leaves unmatched"
+run = "go run ./dev/matchstudy"
+
 # `touch` marks the output current even when the install itself changed nothing.
 [ui-install]
 description = "Install the UI dependency tree from the lockfile"
