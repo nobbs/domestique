@@ -1,0 +1,4 @@
+interface:
+  display_name: "Domestique Live Debug"
+  short_description: "Troubleshoot the live Domestique deployment"
+  default_prompt: "Use $domestique-live-debug to find out what production is doing."
