@@ -2323,3 +2323,275 @@ func TestASwitchedOffTaskStillRunsWhenAskedFor(t *testing.T) {
 
 	assert.Equal(t, 1, runner.runs(), "a switched-off task refused the operator who asked")
 }
+
+// holdInventory registers a task that takes the inventory until released, and
+// starts it.
+func holdInventory(t *testing.T, manager *Manager) *blockingRunner {
+	t.Helper()
+	held := blockOn()
+	require.NoError(t, manager.Register(&Definition{Name: "holder", Run: held, Resources: exclusive("inventory")}), "Register(holder)")
+	require.True(t, manager.Trigger(t.Context(), "holder", ""), "Trigger(holder)")
+	<-held.started
+
+	return held
+}
+
+func TestARequestHeldBackStartsOnceTheResourceIsReleased(t *testing.T) {
+	t.Parallel()
+
+	manager, store := newTestManager(t)
+	held := holdInventory(t, manager)
+	recorder := argumentRecorder()
+	require.NoError(t, manager.Register(&Definition{
+		Name: "record", Run: recorder, Resources: exclusive("inventory"), ParkWhenHeld: true,
+	}), "Register(record)")
+
+	require.True(t, manager.Request(t.Context(), "record", "a"), "Request(a)")
+	require.True(t, manager.Request(t.Context(), "record", "b"), "Request(b)")
+	require.True(t, manager.Request(t.Context(), "record", "a"), "Request(a) again")
+	assert.Empty(t, recorder.arguments(), "a parked attempt ran while its resource was held")
+
+	close(held.release)
+	require.Eventually(t, func() bool { return len(recorder.arguments()) == 2 },
+		time.Second, time.Millisecond, "the parked attempts never ran")
+	manager.Wait()
+
+	assert.Equal(t, []string{"a", "b"}, recorder.arguments(), "one attempt per argument, oldest first")
+	for _, run := range store.recorded() {
+		assert.NotEqual(t, string(Skipped), run.outcome, "a parked attempt was recorded as skipped: %+v", run)
+	}
+}
+
+func TestTriggerStillRefusesATaskThatParks(t *testing.T) {
+	t.Parallel()
+
+	manager, store := newTestManager(t)
+	held := holdInventory(t, manager)
+	recorder := argumentRecorder()
+	require.NoError(t, manager.Register(&Definition{
+		Name: "record", Run: recorder, Resources: exclusive("inventory"), ParkWhenHeld: true,
+	}), "Register(record)")
+
+	assert.False(t, manager.Trigger(t.Context(), "record", "a"), "Trigger(record)")
+	close(held.release)
+	manager.Wait()
+
+	assert.Empty(t, recorder.arguments(), "a refused trigger ran after all")
+	assert.Contains(t, store.recorded(), recordedRun{
+		task: "record", argument: "a", trigger: string(TriggerManual), outcome: string(Skipped),
+		detail: string(DetailHeld), retain: defaultRetainedRuns,
+	}, "the refusal was not recorded")
+}
+
+func TestARequestForATaskThatDoesNotParkIsRefused(t *testing.T) {
+	t.Parallel()
+
+	manager, store := newTestManager(t)
+	held := holdInventory(t, manager)
+	require.NoError(t, manager.Register(&Definition{Name: "other", Run: succeeds(), Resources: exclusive("inventory")}), "Register(other)")
+
+	assert.False(t, manager.Request(t.Context(), "other", ""), "Request(other)")
+	assert.False(t, manager.Request(t.Context(), "unknown", ""), "Request(unknown)")
+	require.Eventually(t, func() bool {
+		return slices.Contains(store.recorded(), recordedRun{
+			task: "other", trigger: string(TriggerManual), outcome: string(Skipped),
+			detail: string(DetailHeld), retain: defaultRetainedRuns,
+		})
+	}, time.Second, time.Millisecond, "the refusal was not recorded")
+
+	close(held.release)
+	manager.Wait()
+}
+
+func TestAParkedAttemptWhoseContextEndedIsDropped(t *testing.T) {
+	t.Parallel()
+
+	manager, _ := newTestManager(t)
+	held := holdInventory(t, manager)
+	recorder := argumentRecorder()
+	require.NoError(t, manager.Register(&Definition{
+		Name: "record", Run: recorder, Resources: exclusive("inventory"), ParkWhenHeld: true,
+	}), "Register(record)")
+
+	ctx, cancel := context.WithCancel(t.Context())
+	require.True(t, manager.Request(ctx, "record", "a"), "Request(a)")
+	cancel()
+	close(held.release)
+	manager.Wait()
+
+	assert.Empty(t, recorder.arguments(), "an attempt ran after its context ended")
+}
+
+func TestAParkedAttemptAlreadyUnderWayIsDropped(t *testing.T) {
+	t.Parallel()
+
+	manager, store := newTestManager(t)
+	held := holdInventory(t, manager)
+	recorder := argumentRecorder()
+	require.NoError(t, manager.Register(&Definition{
+		Name: "record", Run: recorder, Resources: exclusive("inventory"), ParkWhenHeld: true,
+	}), "Register(record)")
+	require.True(t, manager.Request(t.Context(), "record", "a"), "Request(a)")
+
+	// The same work started by some other route while this copy waited.
+	manager.mutex.Lock()
+	manager.running[invocationKey{task: "record", argument: "a"}] = struct{}{}
+	manager.mutex.Unlock()
+	close(held.release)
+	manager.Wait()
+
+	manager.mutex.Lock()
+	defer manager.mutex.Unlock()
+	assert.Empty(t, manager.parked, "the parked copy was kept")
+	assert.Empty(t, recorder.arguments(), "the parked copy ran beside the same work")
+	assert.Contains(t, store.recorded(), recordedRun{
+		task: "record", argument: "a", trigger: string(TriggerManual), outcome: string(Skipped),
+		detail: string(DetailWorking), retain: defaultRetainedRuns,
+	}, "the dropped copy left no record")
+}
+
+func TestAParkedTickOfATaskSwitchedOffMeanwhileDoesNotRun(t *testing.T) {
+	t.Parallel()
+
+	manager, _ := newTestManager(t)
+	fired, waits := make(chan time.Time), make(chan time.Duration, 4)
+	manager.after = func(delay time.Duration) <-chan time.Time { waits <- delay; return fired }
+	held := holdInventory(t, manager)
+	var on atomic.Bool
+	on.Store(true)
+	counter := countingRunner()
+	require.NoError(t, manager.Register(&Definition{
+		Name:         "poll",
+		Run:          counter,
+		Resources:    exclusive("inventory"),
+		Schedule:     Every(func() time.Duration { return time.Hour }),
+		InitialDelay: func() time.Duration { return time.Minute },
+		Enabled:      on.Load,
+		ParkWhenHeld: true,
+	}), "Register(poll)")
+
+	ctx, cancel := context.WithCancel(t.Context())
+	stopped := make(chan struct{})
+	go func() { defer close(stopped); manager.Run(ctx) }()
+	<-waits
+	fired <- reference()
+	<-waits
+	on.Store(false)
+	close(held.release)
+	manager.Wait()
+	cancel()
+	<-stopped
+
+	assert.Zero(t, counter.runs(), "a tick ran after its task was switched off")
+}
+
+func TestAHeldScheduledRunOfATaskThatParksRunsOnRelease(t *testing.T) {
+	t.Parallel()
+
+	manager, store := newTestManager(t)
+	fired, waits := make(chan time.Time), make(chan time.Duration, 4)
+	manager.after = func(delay time.Duration) <-chan time.Time { waits <- delay; return fired }
+	held := holdInventory(t, manager)
+	counter := countingRunner()
+	require.NoError(t, manager.Register(&Definition{
+		Name:         "poll",
+		Run:          counter,
+		Resources:    exclusive("inventory"),
+		Schedule:     Every(func() time.Duration { return time.Hour }),
+		InitialDelay: func() time.Duration { return time.Minute },
+		ParkWhenHeld: true,
+	}), "Register(poll)")
+
+	ctx, cancel := context.WithCancel(t.Context())
+	stopped := make(chan struct{})
+	go func() { defer close(stopped); manager.Run(ctx) }()
+	<-waits
+	fired <- reference()
+	<-waits
+	assert.Zero(t, counter.runs(), "the scheduled run started while held")
+
+	close(held.release)
+	require.Eventually(t, func() bool { return counter.runs() == 1 },
+		time.Second, time.Millisecond, "the parked scheduled run never started")
+	manager.Wait()
+	cancel()
+	<-stopped
+
+	assert.NotContains(t, store.recorded(), recordedRun{
+		task: "poll", trigger: string(TriggerSchedule), outcome: string(Skipped),
+		detail: string(DetailHeld), retain: defaultRetainedRuns,
+	}, "a parked scheduled run was recorded as refused")
+}
+
+func TestAHeldSuccessorThatParksRunsOnRelease(t *testing.T) {
+	t.Parallel()
+
+	manager, _ := newTestManager(t)
+	held := holdInventory(t, manager)
+	counter := countingRunner()
+	require.NoError(t, manager.Register(&Definition{
+		Name: "child", Run: counter, Resources: exclusive("inventory"), Follows: []string{"parent"},
+		ParkWhenHeld: true,
+	}), "Register(child)")
+	require.NoError(t, manager.Register(&Definition{Name: "parent", Run: succeeds()}), "Register(parent)")
+	require.NoError(t, manager.Resolve(), "Resolve()")
+
+	require.True(t, manager.Trigger(t.Context(), "parent", ""), "Trigger(parent)")
+	require.Eventually(t, func() bool {
+		manager.mutex.Lock()
+		defer manager.mutex.Unlock()
+
+		return len(manager.parked) == 1
+	}, time.Second, time.Millisecond, "the successor was not parked")
+
+	close(held.release)
+	manager.Wait()
+	assert.Equal(t, 1, counter.runs(), "the parked successor never ran")
+}
+
+func TestARequestWithNothingHeldStartsAtOnce(t *testing.T) {
+	t.Parallel()
+
+	manager, _ := newTestManager(t)
+	recorder := argumentRecorder()
+	require.NoError(t, manager.Register(&Definition{
+		Name: "record", Run: recorder, Resources: exclusive("inventory"), ParkWhenHeld: true,
+	}), "Register(record)")
+
+	require.True(t, manager.Request(t.Context(), "record", "a"), "Request(a)")
+	manager.Wait()
+
+	assert.Equal(t, []string{"a"}, recorder.arguments(), "the request did not run")
+}
+
+func TestARequestJoinsTheCopyAlreadyWaitingEvenWhenTheResourceIsFree(t *testing.T) {
+	t.Parallel()
+
+	manager, store := newTestManager(t)
+	held := holdInventory(t, manager)
+	recorder := argumentRecorder()
+	require.NoError(t, manager.Register(&Definition{
+		Name: "record", Run: recorder, Resources: exclusive("inventory"), ParkWhenHeld: true,
+	}), "Register(record)")
+	require.True(t, manager.Request(t.Context(), "record", "a"), "Request(a)")
+
+	// The instant between a release and its unpark: the resource is free while
+	// the first copy still waits.
+	manager.mutex.Lock()
+	delete(manager.exclusive, "inventory")
+	manager.mutex.Unlock()
+	require.True(t, manager.Request(t.Context(), "record", "a"), "Request(a) again")
+	manager.mutex.Lock()
+	manager.exclusive["inventory"] = struct{}{}
+	manager.mutex.Unlock()
+
+	close(held.release)
+	manager.Wait()
+	require.Eventually(t, func() bool { return len(recorder.arguments()) == 1 },
+		time.Second, time.Millisecond, "the waiting copy never ran")
+	manager.Wait()
+	assert.Equal(t, []string{"a"}, recorder.arguments(), "the request overtook the waiting copy")
+	for _, run := range store.recorded() {
+		assert.NotEqual(t, string(Skipped), run.outcome, "a joined request left a refusal: %+v", run)
+	}
+}

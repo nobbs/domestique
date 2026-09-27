@@ -3590,6 +3590,7 @@ func (a *fakeAlerts) Decide(_ context.Context, decisions []AlertDecision) error 
 type fakeTasks struct {
 	scheduleErr error
 	asked       []startedTask
+	requested   []startedTask
 	started     []startedTask
 	scheduled   []scheduledTask
 	registered  []RegisteredTask
@@ -3620,6 +3621,12 @@ func (t *fakeTasks) Schedule(_ context.Context, name string, enabled bool) error
 	}
 
 	return nil
+}
+
+func (t *fakeTasks) Request(name, argument string) bool {
+	t.requested = append(t.requested, startedTask{name: name, argument: argument})
+
+	return t.Run(name, argument)
 }
 
 func (t *fakeTasks) Run(name, argument string) bool {

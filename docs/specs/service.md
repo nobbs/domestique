@@ -431,8 +431,8 @@ ignored, as is a user this deployment does not know: the unknown user is
 answered exactly like one it does, so a per-application webhook cannot be used
 to probe which riders are connected, and neither the user nor the presented
 token reaches a log. The answer does not wait for the task, and is `200`
-whether or not it was accepted — a refused start means something is already
-reading that rider's rides. **Nothing from the payload is stored.** The
+whether or not it was accepted — a start held by other activity work waits for
+it, and only a record of that very workout already under way refuses one. **Nothing from the payload is stored.** The
 notification is a hint: a workout the account does not hold, one that is not
 cycling, and one already recorded each change nothing, and the schedule remains
 the fallback for every notification that never arrives.

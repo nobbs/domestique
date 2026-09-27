@@ -69,6 +69,9 @@ func (t demoTasks) Schedule(_ context.Context, name string, enabled bool) error 
 	return nil
 }
 
+// Request is Run: nothing in the demo holds a resource.
+func (t demoTasks) Request(name, argument string) bool { return t.Run(name, argument) }
+
 // Run reseeds for the synchronization tasks and accepts the rest without work:
 // a demo has no upstream to reach, no target to write, and no map to index.
 func (t demoTasks) Run(name, _ string) bool {

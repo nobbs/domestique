@@ -812,6 +812,7 @@ func TestActivityPollTaskHoldsOnlyTheActivities(t *testing.T) {
 	definition := activityPollTask(poller, allEnabled, func() []string { return []string{"rider-a"} })
 
 	assert.Equal(t, taskActivityPoll, definition.Name, "name")
+	assert.True(t, definition.ParkWhenHeld, "a held run must wait for the activities, not be dropped")
 	assert.Equal(t,
 		[]task.Resource{{Name: resourceActivities, Exclusive: true}},
 		definition.Resources(""),
@@ -836,6 +837,7 @@ func TestZwiftPollTaskHoldsTheActivitiesExclusively(t *testing.T) {
 	definition := zwiftPollTask(poller, allEnabled, func() []string { return []string{"rider-a"} })
 
 	assert.Equal(t, taskZwiftPoll, definition.Name, "name")
+	assert.True(t, definition.ParkWhenHeld, "a held run must wait for the activities, not be dropped")
 	assert.Equal(t,
 		[]task.Resource{{Name: resourceActivities, Exclusive: true}},
 		definition.Resources(""),
@@ -990,6 +992,7 @@ func TestActivityRecordTaskReadsBackTheHandOff(t *testing.T) {
 	definition := activityRecordTask(poller)
 
 	assert.Equal(t, taskActivityRecord, definition.Name, "name")
+	assert.True(t, definition.ParkWhenHeld, "a held run must wait for the activities, not be dropped")
 	assert.Equal(t,
 		[]task.Resource{{Name: resourceActivities, Exclusive: true}},
 		definition.Resources(""),
@@ -1292,6 +1295,7 @@ func TestActivityDeriveTaskFollowsBothReadersUnderTheSameResource(t *testing.T) 
 	definition := activityDeriveTask(deriver, allEnabled, func() []string { return []string{"rider-a"} })
 
 	assert.Equal(t, taskActivityDerive, definition.Name, "name")
+	assert.True(t, definition.ParkWhenHeld, "a held run must wait for the activities, not be dropped")
 	assert.ElementsMatch(t,
 		[]string{taskActivityPoll, taskActivityRecord, taskZwiftPoll}, definition.Follows, "follows")
 	assert.ElementsMatch(t, []string{taskSyncSource, taskSyncPlan}, definition.FollowsChanges, "follows changes")
@@ -1406,6 +1410,7 @@ func TestActivityAnalyseTaskFollowsDeriveUnderTheSameResource(t *testing.T) {
 	definition := activityAnalyseTask(analyser, allEnabled, twoTargets)
 
 	assert.Equal(t, taskActivityAnalyse, definition.Name, "name")
+	assert.True(t, definition.ParkWhenHeld, "a held run must wait for the activities, not be dropped")
 	assert.Equal(t, []string{taskActivityDerive}, definition.Follows, "follows")
 	assert.Equal(t, []task.Resource{{Name: resourceActivities, Exclusive: true}}, definition.Resources(""), "resources")
 	assert.Equal(t, twoTargets(), definition.FanOut(), "fan-out")

@@ -104,9 +104,9 @@ func (h *Handler) ReceiveWahooWebhook(writer http.ResponseWriter, request *http.
 
 		return
 	}
-	// A refused start means a poll or another notification holds the activities
-	// resource; the schedule is the fallback for it.
-	started := h.tasks.Run(TaskActivityRecord, ActivityRecordArgument(target, event.WorkoutSummary.Workout.ID))
+	// A held resource parks the record until it is released; only a record of
+	// this very ride already under way refuses it.
+	started := h.tasks.Request(TaskActivityRecord, ActivityRecordArgument(target, event.WorkoutSummary.Workout.ID))
 	slog.Info("wahoo webhook accepted", "target", target, "started", started)
 	writer.WriteHeader(http.StatusOK)
 }

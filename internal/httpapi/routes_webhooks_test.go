@@ -129,6 +129,8 @@ func TestWahooWebhookRecordsTheNotifiedWorkout(t *testing.T) {
 	assert.Equal(t, []startedTask{{
 		name: TaskActivityRecord, argument: ActivityRecordArgument(testSubject, testWorkoutID),
 	}}, tasks.started)
+	assert.Equal(t, tasks.started, tasks.requested,
+		"the record was not requested, so a held resource would drop it instead of parking it")
 }
 
 // Wahoo's documented sample, with the summary and its nested workout, decodes

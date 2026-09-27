@@ -37,7 +37,10 @@ unchanged   it ran, checked, and found nothing new
 ## Run history
 
 Every attempt is recorded, with one exception: one that shutdown `cancelled`
-cannot write during the shutdown that ended it.
+cannot write during the shutdown that ended it. A parked attempt is recorded
+when it runs, or as refused when it finds its very work already under way; a
+request that joins one already waiting is recorded by that one, and one still
+waiting at shutdown is not recorded.
 
 A refusal is recorded, and says which kind of busy stopped it: this service
 working on the very same thing, or working on something else that held what the
@@ -68,9 +71,20 @@ exclusively. Two attempts wanting the same resource run together only when both
 want it shared. An attempt takes its whole set or none of it, so no attempt ever
 waits while holding part of what another one needs.
 
-A resource that is held refuses the attempt rather than queueing it. Every task
-here would rather run again later than pile attempts on the same state, and a
-refused attempt reports `skipped`.
+A resource that is held refuses the attempt rather than queueing it, and a
+refused attempt reports `skipped`. Most tasks here would rather run again later
+than pile attempts on the same state.
+
+The activity tasks (`activity:record`, `activity:poll`, `zwift:poll`,
+`activity:derive`, `activity:analyse`) are the exception: their later is too far
+away. A rider's ride arrives once, by webhook, and the schedules that would pick
+it up again start in the same instant as each other. So an attempt of theirs that
+the schedule, a chain or the webhook asked for **parks** instead: it waits,
+unrecorded, and starts as soon as a release leaves what it needs free. At most
+one attempt waits per task and argument, a later request joining it. An operator
+asking is still refused at once, so the answer to pressing Run is immediate.
+Parked attempts live in memory only: a restart forgets them, and the next
+scheduled poll is the backstop, which parking also keeps from losing its race.
 
 Resources describe state, not tasks. Everything that reads or writes the trusted
 inventory takes `inventory`, whichever task asked, so no two of those overlap. A
@@ -100,11 +114,13 @@ in the morning.
 
 An attempt releases its resources before its chain starts. A successor wanting
 what its parent held would otherwise be refused by its own parent, which is the
-usual case rather than the exception.
+usual case rather than the exception. A parked attempt is offered the release
+first, so an activity task's successor can find it taken and park in turn.
 
 A successor asking for work already under way is dropped, not refused: the work
 is happening, which is what the successor wanted. A successor losing a resource
-to something unrelated is a refusal, and is recorded as one.
+to something unrelated is a refusal, and is recorded as one, unless its task
+parks.
 
 The depth limit and one chain's set of what it has already run sit behind
 registration's cycle refusal, as belt and braces — a chain runs in order, so
@@ -450,8 +466,8 @@ it again once per target.
 
 A Wahoo webhook starts `activity:record` for the target and workout it names,
 ahead of the schedule and under the same `activities` exclusivity — a delivery
-that arrives while a poll is running is refused and changes nothing, and the
-schedule remains the fallback ([the receiver](service.md)). It reads that one
+that arrives while another activity task holds them parks and starts once they
+are released ([mutual exclusion](#mutual-exclusion), [the receiver](service.md)). It reads that one
 workout and, where its entry carried no summary, that summary: two requests at
 most, where a poll re-lists the account. The notification decides nothing —
 recordability, whether the ride is already stored, and every total come from
