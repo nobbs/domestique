@@ -121,7 +121,9 @@ database (pre-approved), use it, and revoke it before finishing.
    rev=$(ssh domestique 'docker inspect domestique-domestique-1 --format "{{index .Config.Labels \"org.opencontainers.image.revision\"}}"')
    git worktree add --detach .local/live-debug-src "$rev"
    (cd .local/live-debug-src && GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o ../live-session ./dev/session)
+   want=$(ls .local/live-debug-src/internal/sqlite/migrations/*.up.sql | tail -1 | xargs basename | cut -d_ -f1)
    git worktree remove .local/live-debug-src
+   q "SELECT max(version) FROM schema_migrations;"   # must equal $((10#$want)), or stop: minting would migrate
    scp .local/live-session domestique:/tmp/live-session
    ```
 
@@ -189,12 +191,13 @@ For anything that needs the real library locally, use the existing, safe flow
 
 ```sh
 DOMESTIQUE_DEV_SUBJECT="<subject>" DOCKER_HOST=ssh://domestique ./dev/setup.sh |
-  grep -o 'DOMESTIQUE_DEV_SESSION=.*' > .local/dev/session_token
+  sed -n 's/.*DOMESTIQUE_DEV_SESSION=//p' > .local/dev/session_token
+DOMESTIQUE_DEV_SESSION="$(cat .local/dev/session_token)" mise run ui-dev
 ```
 
 That is a database read: it needs the same per-session approval. The snapshot
 lands in `.local/dev`, and its session token in `.local/dev/session_token`,
-which the `ui-dev` launch entry reads, so it never reaches captured output.
+passed to `ui-dev` from there, so it never reaches captured output.
 Delete both with the worktree.
 
 ## Finishing
