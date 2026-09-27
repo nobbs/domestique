@@ -1292,7 +1292,7 @@ export interface RiderParameters {
 }
 
 /**
- * The FTP Zwift's own profile carried at the rider's last Zwift poll, read from the profile response the poll already fetches and never by a call this page makes. Absent when the rider has no Zwift credentials or Zwift sent no positive FTP, and removed when the credentials are.
+ * The FTP Zwift's own profile carried at the rider's last Zwift poll, read from the profile response the poll already fetches and never by a call this page makes. Absent when the rider has no Zwift credentials or the last poll's profile held no positive FTP, and removed when the credentials are.
  */
 export interface RiderZwiftSuggestion {
   functionalThresholdPowerWatts: number;
@@ -1317,7 +1317,7 @@ export interface StoppingSuggestion {
 }
 
 /**
- * What the rider's rides of the last ninety days say some of these numbers could be, offered beside the controls and stored nowhere. A parameter no ride carried a sensor for is absent rather than zero. The FTP suggestion alone falls back to the last twelve months when the ninety-day window held no power.
+ * What the rider's rides of the last ninety days say some of these numbers could be, offered beside the controls and stored nowhere. A parameter no ride carried a sensor for is absent rather than zero. The FTP suggestion alone falls back to the last twelve months when the ninety-day window yields no FTP estimate.
  */
 export interface RiderSuggestions {
   /** The highest heart rate held over a rolling minute. */

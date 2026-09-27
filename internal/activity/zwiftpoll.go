@@ -62,7 +62,7 @@ type ZwiftStore interface {
 	// empty when it has not been entered.
 	RiderZwiftCredentials(ctx context.Context, subject string) (email, password []byte, err error)
 	// SetRiderZwiftFTP records the FTP a poll's sign-in read off the rider's
-	// own profile, and when it read it.
+	// own profile, and when it read it; zero removes it.
 	SetRiderZwiftFTP(ctx context.Context, subject string, watts float64, at time.Time) error
 	KnownActivityIDs(ctx context.Context, targetID, provider string) ([]int64, error)
 	StoreActivity(ctx context.Context, targetID string, listing Listing, summary Summary, now time.Time) error
@@ -140,10 +140,14 @@ func (p *ZwiftPoller) Poll(ctx context.Context, targetID string) Result {
 	if signInErr != nil {
 		return Result{Outcome: Failed, Failure: p.classify(targetID, signInErr)}
 	}
-	if watts, ok := reader.FunctionalThresholdPowerWatts(); ok {
-		if err := p.store.SetRiderZwiftFTP(ctx, subject, watts, p.now()); err != nil {
-			return Result{Outcome: Failed, Failure: FailureState}
-		}
+	// A profile holding no FTP clears the last one, so the page never offers
+	// a figure Zwift no longer holds.
+	watts, ok := reader.FunctionalThresholdPowerWatts()
+	if !ok {
+		watts = 0
+	}
+	if err := p.store.SetRiderZwiftFTP(ctx, subject, watts, p.now()); err != nil {
+		return Result{Outcome: Failed, Failure: FailureState}
 	}
 
 	stored, failure := p.storeNew(ctx, targetID, reader)

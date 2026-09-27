@@ -671,3 +671,37 @@ func TestRiderZwiftFTPReportsAnUnreadableStore(t *testing.T) {
 	_, _, err := store.RiderZwiftFTP(t.Context(), "rider-a")
 	require.ErrorContains(t, err, "reading the rider's zwift ftp")
 }
+
+func TestSetRiderZwiftFTPOfZeroRemovesIt(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testKey(1))
+	require.NoError(t, store.SetRiderZwiftFTP(t.Context(), "rider-a", 249, activityNow()), "SetRiderZwiftFTP()")
+	require.NoError(t, store.SetRiderZwiftFTP(t.Context(), "rider-a", 0, activityNow()), "SetRiderZwiftFTP(0)")
+
+	watts, _, err := store.RiderZwiftFTP(t.Context(), "rider-a")
+	require.NoError(t, err)
+	assert.False(t, watts.Set, "a profile holding none clears the last one")
+}
+
+// A meter pairing late must not move the date: it is the ride's own start.
+func TestRiderSuggestionsDateTheFTPToTheRideStartNotItsFirstPowerSample(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testKey(1))
+	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
+	starts := activityNow().Add(-200 * 24 * time.Hour)
+	require.NoError(t, store.StoreActivity(t.Context(), "rider-a",
+		activity.Listing{ID: 1, TypeID: 15, LocationID: 1, Starts: starts},
+		activity.Summary{DistanceMetres: 1000, MovingSeconds: 2100, ElapsedSeconds: 2100, Raw: []byte(`{}`)},
+		starts,
+	), "StoreActivity()")
+	fit := steady(1500, 150, 240)
+	for index := range fit.Records {
+		fit.Records[index].Time = starts.Add(10*time.Minute + time.Duration(index)*time.Second)
+	}
+	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", 1, fit, activity.RecordsVersion),
+		"StoreActivityRecords()")
+
+	suggestions, err := store.RiderSuggestions(t.Context(), []string{"rider-a"}, nil, activityNow().Add(-rider.SuggestionWindow))
+	require.NoError(t, err, "RiderSuggestions()")
+	assert.True(t, starts.Equal(suggestions.FunctionalThresholdPowerFrom), "dated to the ride's start")
+}

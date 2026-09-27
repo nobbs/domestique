@@ -870,14 +870,14 @@ The read-only JSON surface is small:
   parameter no ride carried a sensor for is absent rather than zero, and a
   rider with no target yet is answered with no suggestions.
 
-  The FTP suggestion alone reaches back twelve months when the ninety days held
-  no power — a rider whose only meter is an indoor trainer rides without one
+  The FTP suggestion alone reaches back twelve months when the ninety days
+  yield no FTP estimate — a rider whose only meter is an indoor trainer rides without one
   all summer — and carries the start of the ride it came from, whichever window
   supplied it. Beside it sits the FTP the caller's own Zwift profile held at the
   last Zwift poll, with when that poll read it: offered, never applied, and
-  answered from the store — this path never calls Zwift. It is absent until a
-  poll has read a positive figure, and removing either Zwift credential removes
-  it.
+  answered from the store — this path never calls Zwift. It is absent when the
+  last poll's profile held no positive figure, and removing either Zwift
+  credential removes it.
 
   The stopping habit is the median and quartiles of stopped seconds per moving
   hour — elapsed time less moving time, over moving time — across the caller's

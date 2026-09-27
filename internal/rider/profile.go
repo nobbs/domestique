@@ -80,8 +80,8 @@ const (
 const SuggestionWindow = 90 * 24 * time.Hour
 
 // FunctionalThresholdPowerFallbackWindow is how far back the FTP suggestion
-// alone falls back to when SuggestionWindow held no power: an indoor-only
-// rider can go half a year without an outdoor power ride.
+// alone falls back to when SuggestionWindow yields no FTP estimate: an
+// indoor-only rider can go half a year without an outdoor power ride.
 const FunctionalThresholdPowerFallbackWindow = 365 * 24 * time.Hour
 
 // Suggestions are what the rider's recent rides say their numbers could be,

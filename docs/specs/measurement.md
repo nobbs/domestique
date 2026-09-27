@@ -709,9 +709,10 @@ point that could agree with it.
 
 **Window.** Every suggestion reads the last ninety days, fitness being what
 moves. The FTP alone falls back to the last twelve months when those ninety days
-held no power at all, by the same two estimates over power samples only, since a
+yield no FTP estimate — no power at all, or only rides too short for either
+estimate — by the same two estimates over power samples only, since a
 trainer-only rider otherwise has no FTP suggestion for half the year. Either way
-it names the ride it came from (`internal/sqlite/rider.go` `RiderSuggestions`).
+it names the start of the ride it came from (`internal/sqlite/rider.go` `RiderSuggestions`).
 
 **Ramp test.** A rider who tests on a ramp never rides the twenty minutes the
 estimate above scales, so a second estimate reads that protocol instead: 75% of

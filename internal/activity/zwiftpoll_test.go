@@ -560,16 +560,17 @@ func TestZwiftPollStoresTheFTPAfterSignIn(t *testing.T) {
 	assert.Equal(t, storedFTP{subject: "rider-a", watts: 249, at: pollNow()}, store.ftpStored[0])
 }
 
-// No positive FTP is no suggestion Zwift ever offered, so nothing overwrites
-// what is already stored.
-func TestZwiftPollStoresNothingWhenFTPIsAbsent(t *testing.T) {
+// A profile holding no positive FTP clears the one stored, so the page never
+// offers a figure Zwift no longer holds.
+func TestZwiftPollClearsTheFTPWhenTheProfileHoldsNone(t *testing.T) {
 	store := newFakeZwiftStore()
 	source := &fakeZwiftSource{}
 
 	result := newTestZwiftPoller(t, source, store).Poll(t.Context(), "rider-a")
 
 	assert.Equal(t, Unchanged, result.Outcome)
-	assert.Empty(t, store.ftpStored)
+	require.Len(t, store.ftpStored, 1)
+	assert.Zero(t, store.ftpStored[0].watts, "zero, which the store takes as removal")
 }
 
 // Storing the FTP is state like any other the poll writes: a failure there

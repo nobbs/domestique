@@ -86,7 +86,7 @@ func (q *Queries) GetRiderZwiftFTP(ctx context.Context, subject string) (GetRide
 }
 
 const listActivityPowerSamples = `-- name: ListActivityPowerSamples :many
-SELECT r.target_slot, r.workout_id, r.recorded_at_unix, r.power_watts
+SELECT r.target_slot, r.workout_id, a.started_at_unix, r.recorded_at_unix, r.power_watts
 FROM activity_records AS r
 JOIN activities AS a ON a.target_slot = r.target_slot AND a.workout_id = r.workout_id
 WHERE a.started_at_unix >= ?1
@@ -103,6 +103,7 @@ type ListActivityPowerSamplesParams struct {
 type ListActivityPowerSamplesRow struct {
 	TargetSlot     string
 	WorkoutID      int64
+	StartedAtUnix  int64
 	RecordedAtUnix int64
 	PowerWatts     sql.NullFloat64
 }
@@ -130,6 +131,7 @@ func (q *Queries) ListActivityPowerSamples(ctx context.Context, arg ListActivity
 		if err := rows.Scan(
 			&i.TargetSlot,
 			&i.WorkoutID,
+			&i.StartedAtUnix,
 			&i.RecordedAtUnix,
 			&i.PowerWatts,
 		); err != nil {
@@ -147,7 +149,7 @@ func (q *Queries) ListActivityPowerSamples(ctx context.Context, arg ListActivity
 }
 
 const listActivitySensorSamples = `-- name: ListActivitySensorSamples :many
-SELECT r.target_slot, r.workout_id, r.recorded_at_unix, r.heart_rate_bpm, r.power_watts
+SELECT r.target_slot, r.workout_id, a.started_at_unix, r.recorded_at_unix, r.heart_rate_bpm, r.power_watts
 FROM activity_records AS r
 JOIN activities AS a ON a.target_slot = r.target_slot AND a.workout_id = r.workout_id
 WHERE a.started_at_unix >= ?1
@@ -164,6 +166,7 @@ type ListActivitySensorSamplesParams struct {
 type ListActivitySensorSamplesRow struct {
 	TargetSlot     string
 	WorkoutID      int64
+	StartedAtUnix  int64
 	RecordedAtUnix int64
 	HeartRateBpm   sql.NullFloat64
 	PowerWatts     sql.NullFloat64
@@ -195,6 +198,7 @@ func (q *Queries) ListActivitySensorSamples(ctx context.Context, arg ListActivit
 		if err := rows.Scan(
 			&i.TargetSlot,
 			&i.WorkoutID,
+			&i.StartedAtUnix,
 			&i.RecordedAtUnix,
 			&i.HeartRateBpm,
 			&i.PowerWatts,
