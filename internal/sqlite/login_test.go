@@ -2,6 +2,8 @@ package sqlite
 
 import (
 	"bytes"
+	"context"
+	"database/sql"
 	"testing"
 	"time"
 
@@ -298,4 +300,45 @@ func TestStoreRejectsDuplicateDigests(t *testing.T) {
 	token := loginDigest(33)
 	require.NoError(t, store.CreateSession(t.Context(), token, "subject", "display", "", false, now, future), "CreateSession()")
 	assert.Error(t, store.CreateSession(t.Context(), token, "subject", "display", "", false, now, future), "CreateSession() reusing a token digest")
+}
+
+func TestStoreReadsSessionWhileAWriteIsInFlight(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testKey(1))
+	now := time.Unix(1_700_000_000, 0)
+	digest := loginDigest(7)
+	require.NoError(t, store.CreateSession(t.Context(), digest, "rider@example.ts.net", "Rider", "", false, now, now.Add(time.Hour)), "CreateSession()")
+
+	statement, err := routed{writer: store.database, reader: store.reader}.PrepareContext(t.Context(), "SELECT 1")
+	require.NoError(t, err, "PrepareContext()")
+	defer closeStatement(statement)
+
+	// Holds the writer's only connection and the database write lock, as a
+	// derivation's per-ride transaction does.
+	transaction, err := store.database.BeginTx(t.Context(), nil)
+	require.NoError(t, err, "BeginTx()")
+	defer rollback(transaction)
+	_, err = transaction.ExecContext(t.Context(), "DELETE FROM web_sessions WHERE subject = 'nobody'")
+	require.NoError(t, err, "a write inside the held transaction")
+
+	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+	defer cancel()
+	subject, _, _, _, err := store.Session(ctx, digest, now)
+	require.NoError(t, err, "Session() must not wait for the writer")
+	assert.Equal(t, "rider@example.ts.net", subject)
+}
+
+func TestRoutedSendsOnlySelectsToTheReader(t *testing.T) {
+	t.Parallel()
+	writer, reader := &sql.DB{}, &sql.DB{}
+	pools := routed{writer: writer, reader: reader}
+	for query, want := range map[string]*sql.DB{
+		"-- name: GetWebSession :one\nSELECT subject FROM web_sessions": reader,
+		"  select 1": reader,
+		"-- name: InsertThing :one\nINSERT INTO t VALUES (1) RETURNING id": writer,
+		"WITH x AS (SELECT 1) DELETE FROM t":                               writer,
+		"-- only a comment":                                                writer,
+	} {
+		assert.Same(t, want, pools.pool(query), query)
+	}
 }
