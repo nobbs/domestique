@@ -424,8 +424,9 @@ func activityPollTask(
 	poller activityPoller, enabled func(string) func() bool, targetIDs func() []string,
 ) task.Definition {
 	return task.Definition{
-		Name:    taskActivityPoll,
-		Enabled: enabled(taskActivityPoll),
+		Name:         taskActivityPoll,
+		ParkWhenHeld: true,
+		Enabled:      enabled(taskActivityPoll),
 		Resources: func(string) []task.Resource {
 			return []task.Resource{{Name: resourceActivities, Exclusive: true}}
 		},
@@ -455,8 +456,9 @@ func zwiftPollTask(
 	poller zwiftPoller, enabled func(string) func() bool, targetIDs func() []string,
 ) task.Definition {
 	return task.Definition{
-		Name:    taskZwiftPoll,
-		Enabled: enabled(taskZwiftPoll),
+		Name:         taskZwiftPoll,
+		ParkWhenHeld: true,
+		Enabled:      enabled(taskZwiftPoll),
 		Resources: func(string) []task.Resource {
 			return []task.Resource{{Name: resourceActivities, Exclusive: true}}
 		},
@@ -493,6 +495,7 @@ func activityAnalyseTask(
 ) task.Definition {
 	return task.Definition{
 		Name:         taskActivityAnalyse,
+		ParkWhenHeld: true,
 		Enabled:      enabled(taskActivityAnalyse),
 		Follows:      []string{taskActivityDerive},
 		Schedule:     task.Every(func() time.Duration { return activityAnalyseInterval }),
@@ -574,6 +577,7 @@ func activityDeriveTask(
 ) task.Definition {
 	return task.Definition{
 		Name:           taskActivityDerive,
+		ParkWhenHeld:   true,
 		Enabled:        enabled(taskActivityDerive),
 		Follows:        []string{taskActivityPoll, taskActivityRecord, taskZwiftPoll},
 		FollowsChanges: []string{taskSyncSource, taskSyncPlan},
@@ -601,7 +605,8 @@ func activityDeriveTask(
 // buys ahead of it, under the same exclusivity so the two never overlap.
 func activityRecordTask(poller activityPoller) task.Definition {
 	return task.Definition{
-		Name: taskActivityRecord,
+		Name:         taskActivityRecord,
+		ParkWhenHeld: true,
 		Resources: func(string) []task.Resource {
 			return []task.Resource{{Name: resourceActivities, Exclusive: true}}
 		},
@@ -908,6 +913,12 @@ func enabledOf(decided map[string]bool, name string) bool {
 // so it ends when the service does, not when the request that asked for it does.
 func (s taskSurface) Run(name, argument string) bool {
 	return s.manager.Trigger(s.ctx, name, argument)
+}
+
+// Request starts one attempt like Run, but a task that parks waits for what it
+// needs instead of being refused.
+func (s taskSurface) Request(name, argument string) bool {
+	return s.manager.Request(s.ctx, name, argument)
 }
 
 // taskStarter is the task layer as the HTTP boundary needs it; syncReporter is

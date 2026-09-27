@@ -153,6 +153,10 @@ type Tasks interface {
 	// context: an accepted attempt outlives the request that asked for it, and a
 	// request context is cancelled the moment its handler returns.
 	Run(name, argument string) bool
+	// Request starts one attempt like Run, except that a task declaring it
+	// waits for a held resource rather than being refused. It is for the
+	// service's own requests; a person asking is answered at once by Run.
+	Request(name, argument string) bool
 	// Schedule records whether the schedule may start one task. It governs
 	// unattended runs only: a task switched off still runs when asked for.
 	Schedule(ctx context.Context, name string, enabled bool) error

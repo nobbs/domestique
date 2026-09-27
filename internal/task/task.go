@@ -20,6 +20,8 @@ const (
 	admitWorking
 	// admitHeld means a resource or a concurrency slot was not free.
 	admitHeld
+	// admitParked means it was held and now waits to start on a release.
+	admitParked
 )
 
 // detail is what a refused admission is recorded as.
@@ -258,6 +260,10 @@ type Definition struct {
 	// Concurrency is how many attempts of this task may run at once. Zero means
 	// one, so registering a task never introduces parallelism by accident.
 	Concurrency int
+	// ParkWhenHeld keeps an attempt the schedule, a chain or Request asked for
+	// while what it needs is held, and starts it on a release. At most one waits
+	// per argument, in memory only; Trigger is still refused at once.
+	ParkWhenHeld bool
 	// Retain is how many of this task's attempts are kept. Zero means the
 	// default; the most recent attempt over each argument is kept regardless.
 	Retain int

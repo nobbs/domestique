@@ -71,6 +71,7 @@ type Manager struct {
 	tasks      map[string]*registered
 	undeclared map[declarationKey]struct{}
 	order      []string
+	parked     []parkedAttempt
 
 	// mutex guards admission alone: a slot and a resource set are taken
 	// together or not at all. undeclaredMutex is separate so that invariant
@@ -90,6 +91,14 @@ type registered struct {
 	nextDueAt  nextDueAt
 	definition Definition
 	inFlight   int
+}
+
+// parkedAttempt is one attempt waiting for what it needs to be released, with
+// the context it would have run under.
+type parkedAttempt struct {
+	ctx        context.Context //nolint:containedctx // an attempt outlives the call that parked it.
+	entry      *registered
+	invocation Invocation
 }
 
 // successor is one edge out of a task; onChange is an edge declared through
@@ -261,6 +270,30 @@ func (m *Manager) Trigger(ctx context.Context, name, argument string) bool {
 	return true
 }
 
+// Request starts one attempt like Trigger, except that a task declaring
+// ParkWhenHeld waits for what it needs rather than being refused. It reports
+// whether the attempt started or is waiting.
+func (m *Manager) Request(ctx context.Context, name, argument string) bool {
+	entry, known := m.tasks[name]
+	if !known || ctx.Err() != nil {
+		return false
+	}
+	invocation := Invocation{Task: name, Argument: argument, Trigger: TriggerManual}
+	release, outcome := m.admitOrPark(ctx, entry, invocation)
+	switch outcome {
+	case admitStarted:
+		m.triggered.Go(func() { m.perform(ctx, entry, invocation, release, nil, 0) })
+
+		return true
+	case admitParked:
+		return true
+	case admitWorking, admitHeld:
+	}
+	m.triggered.Go(func() { m.refused(ctx, entry, invocation, outcome.detail()) })
+
+	return false
+}
+
 // Wait waits for every accepted trigger to finish.
 func (m *Manager) Wait() {
 	m.triggered.Wait()
@@ -352,7 +385,7 @@ func (m *Manager) Holding(resource string) bool {
 }
 
 // follow waits out the initial delay and then runs the task on its schedule
-// until ctx is done. It never starts concurrent work of its own.
+// until ctx is done. Only a tick it parks runs beside it, started by a release.
 func (m *Manager) follow(ctx context.Context, entry *registered) {
 	delay := entry.definition.InitialDelay()
 	due := m.now().UTC().Add(delay)
@@ -390,8 +423,8 @@ func (m *Manager) follow(ctx context.Context, entry *registered) {
 	}
 }
 
-// scheduled performs one attempt from the schedule, which is refused on exactly
-// the terms a trigger is. Cancellation is checked before starting work rather
+// scheduled performs one attempt from the schedule, which is refused on the
+// terms a trigger is unless its task parks. Cancellation is checked before starting work rather
 // than left to the runner to notice.
 func (m *Manager) scheduled(ctx context.Context, entry *registered) {
 	if ctx.Err() != nil {
@@ -407,7 +440,10 @@ func (m *Manager) scheduled(ctx context.Context, entry *registered) {
 	if m.backingOff(ctx, entry, invocation) {
 		return
 	}
-	release, outcome := m.admit(entry, invocation)
+	release, outcome := m.admitOrPark(ctx, entry, invocation)
+	if outcome == admitParked {
+		return
+	}
 	if outcome != admitStarted {
 		m.refused(ctx, entry, invocation, outcome.detail())
 
@@ -540,9 +576,9 @@ func (m *Manager) runSuccessorOver(
 
 		return
 	}
-	release, outcome := m.admit(entry, invocation)
+	release, outcome := m.admitOrPark(ctx, entry, invocation)
 	switch outcome {
-	case admitWorking:
+	case admitWorking, admitParked:
 		// The work is happening, which is what the edge asked for, so the rest
 		// of the chain treats it as run rather than asking again once it ends.
 		visited[keyOf(invocation)] = struct{}{}
@@ -809,11 +845,79 @@ func alertMessage(invocation Invocation, outcome Outcome, alert Detail, referenc
 // what releases them. Nothing is taken unless all of it is available, so an
 // attempt can never wait while holding part of what another one needs.
 func (m *Manager) admit(entry *registered, invocation Invocation) (func(), admission) {
-	wanted := merge(entry.definition.resources(invocation.Argument))
-	key := keyOf(invocation)
-
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
+
+	return m.admitLocked(entry, invocation)
+}
+
+// admitOrPark admits like admit, and parks an attempt refused as held when its
+// task declares ParkWhenHeld. Parking under the same lock as the refusal is
+// what keeps a release from landing between the two and stranding it.
+func (m *Manager) admitOrPark(ctx context.Context, entry *registered, invocation Invocation) (func(), admission) {
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
+
+	release, outcome := m.admitLocked(entry, invocation)
+	if outcome != admitHeld || !entry.definition.ParkWhenHeld {
+		return release, outcome
+	}
+	key := keyOf(invocation)
+	for _, waiting := range m.parked {
+		if keyOf(waiting.invocation) == key {
+			return nil, admitParked
+		}
+	}
+	m.parked = append(m.parked, parkedAttempt{ctx: ctx, entry: entry, invocation: invocation})
+
+	return nil, admitParked
+}
+
+// unpark starts every parked attempt that can now take what it needs, oldest
+// first. One whose context has ended is dropped, and one whose work is already
+// under way is recorded as refused.
+func (m *Manager) unpark() {
+	m.mutex.Lock()
+	type admitted struct {
+		release func()
+		parkedAttempt
+	}
+	var starting []admitted
+	var working []parkedAttempt
+	kept := m.parked[:0]
+	for _, waiting := range m.parked {
+		// A tick waits out a task switched off meanwhile, as it would have unparked.
+		if waiting.ctx.Err() != nil ||
+			waiting.invocation.Trigger == TriggerSchedule && !waiting.entry.definition.enabled() {
+			continue
+		}
+		release, outcome := m.admitLocked(waiting.entry, waiting.invocation)
+		switch outcome {
+		case admitStarted:
+			starting = append(starting, admitted{parkedAttempt: waiting, release: release})
+		case admitHeld:
+			kept = append(kept, waiting)
+		case admitWorking:
+			working = append(working, waiting)
+		case admitParked:
+		}
+	}
+	clear(m.parked[len(kept):])
+	m.parked = kept
+	m.mutex.Unlock()
+
+	for _, next := range starting {
+		m.triggered.Go(func() { m.perform(next.ctx, next.entry, next.invocation, next.release, nil, 0) })
+	}
+	for _, next := range working {
+		m.triggered.Go(func() { m.refused(next.ctx, next.entry, next.invocation, DetailWorking) })
+	}
+}
+
+// admitLocked is admit for a caller already holding the mutex.
+func (m *Manager) admitLocked(entry *registered, invocation Invocation) (func(), admission) {
+	wanted := merge(entry.definition.resources(invocation.Argument))
+	key := keyOf(invocation)
 
 	if _, working := m.running[key]; working {
 		return nil, admitWorking
@@ -832,7 +936,10 @@ func (m *Manager) admit(entry *registered, invocation Invocation) (func(), admis
 	}
 	entry.inFlight++
 
-	return func() { m.release(entry, key, wanted) }, admitStarted
+	return func() {
+		m.release(entry, key, wanted)
+		m.unpark()
+	}, admitStarted
 }
 
 // declarationKey names one alert of one task, for the once-per-build report
