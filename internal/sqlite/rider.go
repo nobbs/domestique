@@ -95,18 +95,18 @@ func (s *Store) SetRiderCredentials(
 ) error {
 	return s.withTx(ctx, "rider credentials", func(queries *sqlcgen.Queries) error {
 		for name, credential := range credentials {
+			// The stored Zwift FTP was read with the account these name; any change
+			// to them makes it no longer this rider's to show.
+			if name == rider.CredentialZwiftEmail || name == rider.CredentialZwiftPassword {
+				if err := queries.DeleteRiderZwiftFTP(ctx, subject); err != nil {
+					return fmt.Errorf("clearing the rider's zwift ftp: %w", err)
+				}
+			}
 			if !credential.IsSet() {
 				if err := queries.DeleteRiderCredential(ctx, sqlcgen.DeleteRiderCredentialParams{
 					Subject: subject, Name: string(name),
 				}); err != nil {
 					return fmt.Errorf("clearing a rider credential: %w", err)
-				}
-				// The stored Zwift FTP is read from this account; without it the
-				// figure is no longer this rider's to show.
-				if name == rider.CredentialZwiftEmail || name == rider.CredentialZwiftPassword {
-					if err := queries.DeleteRiderZwiftFTP(ctx, subject); err != nil {
-						return fmt.Errorf("clearing the rider's zwift ftp: %w", err)
-					}
 				}
 				continue
 			}
@@ -390,7 +390,8 @@ func (s *Store) RiderZwiftCredentials(ctx context.Context, subject string) (emai
 }
 
 // SetRiderZwiftFTP records the FTP a Zwift poll's sign-in read from the
-// rider's own profile, and when it was read. Zero or less removes it.
+// rider's own profile, and when it was read, unless the rider no longer holds
+// both Zwift credentials. Zero or less removes it.
 func (s *Store) SetRiderZwiftFTP(ctx context.Context, subject string, watts float64, at time.Time) error {
 	if watts <= 0 {
 		if err := s.queries.DeleteRiderZwiftFTP(ctx, subject); err != nil {

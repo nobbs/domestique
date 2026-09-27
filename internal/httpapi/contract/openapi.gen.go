@@ -937,7 +937,7 @@ type RiderParameters struct {
 	RollingResistance *float64 `json:"rollingResistance,omitempty"`
 }
 
-// RiderSuggestions What the rider's rides of the last ninety days say some of these numbers could be, offered beside the controls and stored nowhere. A parameter no ride carried a sensor for is absent rather than zero. The FTP suggestion alone falls back to the last twelve months when the ninety-day window yields no FTP estimate.
+// RiderSuggestions What the rider's rides of the last ninety days say some of these numbers could be, offered beside the controls; the ride-derived figures are worked out on each read and stored nowhere, and only `zwift` is kept, as the last Zwift poll read it. A parameter no ride carried a sensor for is absent rather than zero. The FTP suggestion alone falls back to the last twelve months when the ninety-day window yields no FTP estimate.
 type RiderSuggestions struct {
 	// MaxHeartRateBpm The highest heart rate held over a rolling minute.
 	MaxHeartRateBpm *float64 `json:"maxHeartRateBpm,omitempty"`
@@ -951,7 +951,7 @@ type RiderSuggestions struct {
 	Stopping                     *StoppingSuggestion   `json:"stopping,omitempty"`
 }
 
-// RiderZwiftSuggestion The FTP Zwift's own profile carried at the rider's last Zwift poll, read from the profile response the poll already fetches and never by a call this page makes. Absent when the rider has no Zwift credentials or the last poll's profile held no positive FTP, and removed when the credentials are.
+// RiderZwiftSuggestion The FTP Zwift's own profile carried at the rider's last Zwift poll, read from the profile response the poll already fetches and never by a call this page makes. Absent when the rider has no Zwift credentials or the last poll's profile held no positive FTP, and removed when either credential is changed or removed.
 type RiderZwiftSuggestion struct {
 	FunctionalThresholdPowerWatts float64   `json:"functionalThresholdPowerWatts"`
 	ReadAt                        time.Time `json:"readAt"`

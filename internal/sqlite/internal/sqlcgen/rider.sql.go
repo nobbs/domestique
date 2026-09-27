@@ -384,7 +384,9 @@ func (q *Queries) UpsertRiderProfile(ctx context.Context, arg UpsertRiderProfile
 
 const upsertRiderZwiftFTP = `-- name: UpsertRiderZwiftFTP :exec
 INSERT INTO rider_zwift_profiles (subject, ftp_watts, read_at_unix)
-VALUES (?, ?, ?)
+SELECT ?1, ?2, ?3
+WHERE (SELECT COUNT(*) FROM rider_credentials
+       WHERE subject = ?1 AND name IN ('zwift.email', 'zwift.password')) = 2
 ON CONFLICT(subject) DO UPDATE SET ftp_watts = excluded.ftp_watts,
   read_at_unix = excluded.read_at_unix
 `
@@ -395,6 +397,8 @@ type UpsertRiderZwiftFTPParams struct {
 	ReadAtUnix int64
 }
 
+// Only while both Zwift credentials are held: a poll still in flight when the
+// rider removed them must not write the figure back.
 func (q *Queries) UpsertRiderZwiftFTP(ctx context.Context, arg UpsertRiderZwiftFTPParams) error {
 	_, err := q.db.ExecContext(ctx, upsertRiderZwiftFTP, arg.Subject, arg.FtpWatts, arg.ReadAtUnix)
 	return err

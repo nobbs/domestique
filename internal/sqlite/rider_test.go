@@ -626,6 +626,10 @@ func TestRiderZwiftFTPRoundTripsAndLeavesWithTheCredentials(t *testing.T) {
 	}), "SetRiderCredentials()")
 	require.NoError(t, store.SetRiderZwiftFTP(t.Context(), "rider-a", 240, activityNow()), "SetRiderZwiftFTP()")
 	require.NoError(t, store.SetRiderZwiftFTP(t.Context(), "rider-a", 249, activityNow().Add(time.Hour)), "SetRiderZwiftFTP() again")
+	require.NoError(t, store.SetRiderCredentials(t.Context(), "rider-b", map[rider.CredentialName]rider.Credential{
+		rider.CredentialZwiftEmail:    rider.NewCredential([]byte("other@example.test")),
+		rider.CredentialZwiftPassword: rider.NewCredential([]byte("secret")),
+	}), "SetRiderCredentials(rider-b)")
 	require.NoError(t, store.SetRiderZwiftFTP(t.Context(), "rider-b", 180, activityNow()), "SetRiderZwiftFTP(rider-b)")
 
 	watts, readAt, err := store.RiderZwiftFTP(t.Context(), "rider-a")
@@ -647,6 +651,7 @@ func TestRiderZwiftFTPRoundTripsAndLeavesWithTheCredentials(t *testing.T) {
 func TestSetRiderCredentialsReportsAZwiftFTPClearFailure(t *testing.T) {
 	t.Parallel()
 	store := openTestStore(t, testKey(1))
+	holdZwiftCredentials(t, store)
 	require.NoError(t, store.SetRiderZwiftFTP(t.Context(), "rider-a", 249, activityNow()), "SetRiderZwiftFTP()")
 	_, err := store.database.ExecContext(t.Context(), `
 		CREATE TRIGGER reject_zwift_ftp_delete BEFORE DELETE ON rider_zwift_profiles
@@ -675,6 +680,7 @@ func TestRiderZwiftFTPReportsAnUnreadableStore(t *testing.T) {
 func TestSetRiderZwiftFTPOfZeroRemovesIt(t *testing.T) {
 	t.Parallel()
 	store := openTestStore(t, testKey(1))
+	holdZwiftCredentials(t, store)
 	require.NoError(t, store.SetRiderZwiftFTP(t.Context(), "rider-a", 249, activityNow()), "SetRiderZwiftFTP()")
 	require.NoError(t, store.SetRiderZwiftFTP(t.Context(), "rider-a", 0, activityNow()), "SetRiderZwiftFTP(0)")
 
@@ -704,4 +710,40 @@ func TestRiderSuggestionsDateTheFTPToTheRideStartNotItsFirstPowerSample(t *testi
 	suggestions, err := store.RiderSuggestions(t.Context(), []string{"rider-a"}, nil, activityNow().Add(-rider.SuggestionWindow))
 	require.NoError(t, err, "RiderSuggestions()")
 	assert.True(t, starts.Equal(suggestions.FunctionalThresholdPowerFrom), "dated to the ride's start")
+}
+
+func holdZwiftCredentials(t *testing.T, store *Store) {
+	t.Helper()
+	require.NoError(t, store.SetRiderCredentials(t.Context(), "rider-a", map[rider.CredentialName]rider.Credential{
+		rider.CredentialZwiftEmail:    rider.NewCredential([]byte("rider@example.test")),
+		rider.CredentialZwiftPassword: rider.NewCredential([]byte("secret")),
+	}), "SetRiderCredentials()")
+}
+
+// A poll still in flight when the rider removed their Zwift account must not
+// write its figure back.
+func TestSetRiderZwiftFTPStoresNothingWithoutTheCredentials(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testKey(1))
+	require.NoError(t, store.SetRiderZwiftFTP(t.Context(), "rider-a", 249, activityNow()), "SetRiderZwiftFTP()")
+
+	watts, _, err := store.RiderZwiftFTP(t.Context(), "rider-a")
+	require.NoError(t, err)
+	assert.False(t, watts.Set, "no account, no figure")
+}
+
+// Replacing the account's credentials clears the old account's figure until a
+// poll reads the new one.
+func TestReplacingAZwiftCredentialClearsTheFTP(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testKey(1))
+	holdZwiftCredentials(t, store)
+	require.NoError(t, store.SetRiderZwiftFTP(t.Context(), "rider-a", 249, activityNow()), "SetRiderZwiftFTP()")
+
+	require.NoError(t, store.SetRiderCredentials(t.Context(), "rider-a", map[rider.CredentialName]rider.Credential{
+		rider.CredentialZwiftEmail: rider.NewCredential([]byte("other@example.test")),
+	}), "SetRiderCredentials() replacing the email")
+	watts, _, err := store.RiderZwiftFTP(t.Context(), "rider-a")
+	require.NoError(t, err)
+	assert.False(t, watts.Set, "the old account's figure is gone")
 }

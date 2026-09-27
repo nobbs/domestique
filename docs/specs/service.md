@@ -876,8 +876,8 @@ The read-only JSON surface is small:
   supplied it. Beside it sits the FTP the caller's own Zwift profile held at the
   last Zwift poll, with when that poll read it: offered, never applied, and
   answered from the store — this path never calls Zwift. It is absent when the
-  last poll's profile held no positive figure, and removing either Zwift
-  credential removes it.
+  last poll's profile held no positive figure, and changing or removing either
+  Zwift credential removes it, which a poll still in flight cannot undo.
 
   The stopping habit is the median and quartiles of stopped seconds per moving
   hour — elapsed time less moving time, over moving time — across the caller's

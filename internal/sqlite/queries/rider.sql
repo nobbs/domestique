@@ -64,8 +64,12 @@ WHERE started_at_unix >= sqlc.arg(since_unix)
   AND workout_type_id IN (sqlc.slice(workout_type_ids));
 
 -- name: UpsertRiderZwiftFTP :exec
+-- Only while both Zwift credentials are held: a poll still in flight when the
+-- rider removed them must not write the figure back.
 INSERT INTO rider_zwift_profiles (subject, ftp_watts, read_at_unix)
-VALUES (?, ?, ?)
+SELECT sqlc.arg(subject), sqlc.arg(ftp_watts), sqlc.arg(read_at_unix)
+WHERE (SELECT COUNT(*) FROM rider_credentials
+       WHERE subject = sqlc.arg(subject) AND name IN ('zwift.email', 'zwift.password')) = 2
 ON CONFLICT(subject) DO UPDATE SET ftp_watts = excluded.ftp_watts,
   read_at_unix = excluded.read_at_unix;
 
