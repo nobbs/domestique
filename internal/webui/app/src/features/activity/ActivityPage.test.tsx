@@ -8,7 +8,7 @@
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, render, renderHook, screen, waitFor, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -30,7 +30,6 @@ import type {
   RouteClimb,
   WebUIConfig,
 } from "../../api/types";
-import { useViewAsRider } from "../../lib/identity";
 import type { Profile } from "../../lib/profile";
 import type { AlignedSeries } from "../../lib/rideSeries";
 import { isPlannerSeed } from "../plan/planner";
@@ -641,17 +640,6 @@ describe("create plan from this ride", () => {
     show(track(), RIDE.id, undefined, RIDE, [], [], [], undefined, false, true);
 
     expect(screen.queryByRole("button", { name: BUTTON })).toBeNull();
-  });
-
-  it("withholds the button while an admin previews the page as a rider", () => {
-    const { result } = renderHook(() => useViewAsRider());
-    act(() => result.current[1](true));
-    try {
-      show(track(), RIDE.id, undefined, RIDE, [], [], [], undefined, true, true);
-      expect(screen.queryByRole("button", { name: BUTTON })).toBeNull();
-    } finally {
-      act(() => result.current[1](false));
-    }
   });
 
   it("withholds the button for a ride recorded indoors", () => {

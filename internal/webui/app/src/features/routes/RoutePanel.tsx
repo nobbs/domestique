@@ -52,7 +52,7 @@ import {
   formatMovingTimeUncertainty,
 } from "../../lib/format";
 import type { Highlight } from "../../lib/highlight";
-import { useEffectiveAdmin } from "../../lib/identity";
+import { useAdmin } from "../../lib/identity";
 import { bandEntries, surfaceEntries } from "../../lib/mix";
 import type { BandShare, GradientSummary } from "../../lib/profile";
 import type { SurfaceSummary } from "../../lib/surface";
@@ -187,7 +187,7 @@ export function RoutePanel({
   const ground = surfaceVerdict(surface);
   // Largest share first, so the sub-line names what the route is mostly made of.
   const surfaces = surfaceEntries(surface).sort((left, right) => right.metres - left.metres);
-  const effectiveAdmin = useEffectiveAdmin();
+  const admin = useAdmin();
   const config = useQuery(webUIConfigQuery());
 
   return (
@@ -235,7 +235,7 @@ export function RoutePanel({
               <IconLayoutNavbarCollapse size={16} stroke={2} aria-hidden="true" />
             )}
           </button>
-          {effectiveAdmin && config.data?.planning && route.provider === "local" ? (
+          {admin && config.data?.planning && route.provider === "local" ? (
             <Link
               to={`/plan/${route.sourceRouteId}`}
               aria-label="Edit in the planner"
@@ -268,10 +268,10 @@ export function RoutePanel({
                 baseUrl={sourceBaseUrls[route.provider]}
                 sourceRouteId={route.sourceRouteId}
               />
-              {effectiveAdmin && config.data?.planning && route.provider !== "local" && copySeed ? (
+              {admin && config.data?.planning && route.provider !== "local" && copySeed ? (
                 <CopyAndEdit seed={copySeed} />
               ) : null}
-              {effectiveAdmin ? (
+              {admin ? (
                 <>
                   <DropdownMenuSeparator />
                   <ReprocessButton

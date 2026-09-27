@@ -16,7 +16,7 @@ import {
 import { Input } from "../../components/ui/input";
 import { Spinner } from "../../components/ui/spinner";
 import { formatTimestamp } from "../../lib/format";
-import { useEffectiveAdmin } from "../../lib/identity";
+import { useAdmin } from "../../lib/identity";
 import { GUIDANCE_LABELS, syncGuidance } from "../../lib/syncGuidance";
 import { authorisationGuidance, authorisationStartHref } from "../../lib/targetAuthorisation";
 
@@ -96,7 +96,7 @@ export function TargetRow({ target, actions, reconciling, onReconcile, clear }: 
   // Clearing spends the shared deletion gate on a target that may not be this
   // caller's own in the admin fleet view, so it stays admin-only regardless
   // of which page renders this row.
-  const effectiveAdmin = useEffectiveAdmin();
+  const admin = useAdmin();
 
   const tone: RowTone = authorisation
     ? "hold"
@@ -176,7 +176,7 @@ export function TargetRow({ target, actions, reconciling, onReconcile, clear }: 
              * for is the target's own name — the one confirmation a stray
              * click cannot supply.
              */}
-            {effectiveAdmin && clear ? (
+            {admin && clear ? (
               <AlertDialog open={clear.open} onOpenChange={clear.onOpenChange}>
                 <AlertDialogTrigger
                   className="text-sm text-[var(--alert)] underline-offset-4 hover:underline disabled:opacity-50"

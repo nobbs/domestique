@@ -21,7 +21,7 @@ import { TASKS } from "../../api/tasks";
 import { InsetList } from "../../components/InsetList";
 import { Skeleton } from "../../components/ui/skeleton";
 import { formatCount, formatTimestamp } from "../../lib/format";
-import { useEffectiveAdmin } from "../../lib/identity";
+import { useAdmin } from "../../lib/identity";
 import { TargetRow } from "./TargetRow";
 
 /**
@@ -49,7 +49,7 @@ export function TargetConvergenceCard() {
   const queryClient = useQueryClient();
   const { data, isPending, isError } = useQuery(statusQuery());
   const { isPending: configIsPending, isError: configIsError } = useQuery(webUIConfigQuery());
-  const effectiveAdmin = useEffectiveAdmin();
+  const admin = useAdmin();
   const reconcile = useRunTaskArgument({
     mutation: {
       onSuccess: () => queryClient.invalidateQueries({ queryKey: statusQuery().queryKey }),
@@ -99,7 +99,7 @@ export function TargetConvergenceCard() {
       );
     }
 
-    return effectiveAdmin ? (
+    return admin ? (
       <p className="text-sm text-[var(--ink-2)]">No target has connected yet.</p>
     ) : (
       <ConnectPrompt />

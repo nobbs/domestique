@@ -22,16 +22,19 @@ const (
 
 // fakeSessions stands in for internal/session and records what it was asked.
 type fakeSessions struct {
-	verifyErr   error
-	beginErr    error
-	completeErr error
-	revokeErr   error
-	identity    session.Identity
-	login       session.Login
-	completion  session.Completion
-	completed   []string
-	revoked     []string
-	beginCalls  int
+	impersonateErr error
+	verifyErr      error
+	beginErr       error
+	completeErr    error
+	revokeErr      error
+	identity       session.Identity
+	login          session.Login
+	completion     session.Completion
+	completed      []string
+	revoked        []string
+	// impersonated records each Impersonate call as subject|display.
+	impersonated []string
+	beginCalls   int
 }
 
 // newFakeSessions is a session service that admits testSessionToken and
@@ -86,6 +89,22 @@ func (s *fakeSessions) Revoke(_ context.Context, token string) error {
 	s.revoked = append(s.revoked, token)
 
 	return s.revokeErr
+}
+
+// testImpersonatedToken is the session token a fake impersonation mints.
+const testImpersonatedToken = "impersonated-session-token"
+
+func (s *fakeSessions) Impersonate(_ context.Context, subject, display, _ string) (session.Completion, error) {
+	s.impersonated = append(s.impersonated, subject+"|"+display)
+	if s.impersonateErr != nil {
+		return session.Completion{}, s.impersonateErr
+	}
+
+	return session.Completion{
+		Token:     testImpersonatedToken,
+		Identity:  session.Identity{Subject: subject, Display: display},
+		ExpiresAt: time.Date(2026, 10, 1, 1, 0, 0, 0, time.UTC),
+	}, nil
 }
 
 // newSessionHandler builds a handler gated by the given session service.

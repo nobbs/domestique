@@ -94,16 +94,14 @@ export const SignedIn: Story = {
   },
 };
 
-/** An admin session, which alone is offered the rider-view preview switch. */
+/** An admin session with no other rider to view as, so no picker is offered. */
 export const Admin: Story = {
   decorators: withConfig({ ...config(), identity: { display: "admin@example.test", admin: true } }),
   play: async ({ canvas }) => {
     await userEvent.click(canvas.getByRole("button", { name: /Signed in as/ }));
 
     const menu = await screen.findByRole("menu", {}, menuAppears);
-    await expect(
-      within(menu).getByRole("menuitemcheckbox", { name: "View as rider" }),
-    ).toBeInTheDocument();
+    await expect(within(menu).queryByRole("menuitem", { name: "View as…" })).toBeNull();
   },
 };
 
