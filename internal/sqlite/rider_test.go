@@ -643,3 +643,31 @@ func TestRiderZwiftFTPRoundTripsAndLeavesWithTheCredentials(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, other.Set, "another rider's is untouched")
 }
+
+func TestSetRiderCredentialsReportsAZwiftFTPClearFailure(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testKey(1))
+	require.NoError(t, store.SetRiderZwiftFTP(t.Context(), "rider-a", 249, activityNow()), "SetRiderZwiftFTP()")
+	_, err := store.database.ExecContext(t.Context(), `
+		CREATE TRIGGER reject_zwift_ftp_delete BEFORE DELETE ON rider_zwift_profiles
+		BEGIN SELECT RAISE(ABORT, 'zwift ftp clear failed'); END
+	`)
+	require.NoError(t, err)
+
+	require.ErrorContains(t, store.SetRiderCredentials(t.Context(), "rider-a", map[rider.CredentialName]rider.Credential{
+		rider.CredentialZwiftEmail: {},
+	}), "clearing the rider's zwift ftp")
+	watts, _, err := store.RiderZwiftFTP(t.Context(), "rider-a")
+	require.NoError(t, err)
+	assert.True(t, watts.Set, "the failed clear rolled back rather than leaving half a removal")
+}
+
+func TestRiderZwiftFTPReportsAnUnreadableStore(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testKey(1))
+	require.NoError(t, store.Close(), "Close()")
+
+	require.ErrorContains(t, store.SetRiderZwiftFTP(t.Context(), "rider-a", 249, activityNow()), "storing the rider's zwift ftp")
+	_, _, err := store.RiderZwiftFTP(t.Context(), "rider-a")
+	require.ErrorContains(t, err, "reading the rider's zwift ftp")
+}

@@ -284,6 +284,7 @@ func TestRiderProfileReportsAnUnreadableStore(t *testing.T) {
 		"the credentials cannot be read": func(s *fakeState) {
 			s.riderCredentialsErr = errors.New("unreadable")
 		},
+		"the zwift ftp cannot be read": func(s *fakeState) { s.riderZwiftFTPErr = errors.New("unreadable") },
 	} {
 		t.Run(name, func(t *testing.T) {
 			state := riderState()
