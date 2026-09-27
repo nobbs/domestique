@@ -21,13 +21,22 @@ const testRiderB = "auth0|rider-b"
 func newImpersonationHandler(t *testing.T, sessions Sessions) *Handler {
 	t.Helper()
 
-	state := &fakeState{
+	return newImpersonationHandlerWith(t, sessions, impersonationState())
+}
+
+func impersonationState() *fakeState {
+	return &fakeState{
 		targets: []fakeTarget{
 			{id: testSubject, authorization: "authorized", owner: testSubject},
 			{id: testRiderB, authorization: "authorized", owner: testRiderB},
 		},
 		nicknames: map[string]string{testRiderB: "Bee"},
 	}
+}
+
+func newImpersonationHandlerWith(t *testing.T, sessions Sessions, state *fakeState) *Handler {
+	t.Helper()
+
 	handler, err := New(
 		&Options{
 			schemaCache:      testSchemaCache,
@@ -81,24 +90,26 @@ func TestStartImpersonationSwapsTheSessionAndKeepsTheAdminToken(t *testing.T) {
 
 func TestStartImpersonationRefuses(t *testing.T) {
 	for name, tc := range map[string]struct {
-		prepare func(*fakeSessions, *http.Request)
+		prepare func(*fakeSessions, *fakeState, *http.Request)
 		subject string
 		code    int
 	}{
-		"non-admin":      {prepare: func(s *fakeSessions, _ *http.Request) { s.identity.Admin = false }, subject: testRiderB, code: http.StatusForbidden},
-		"foreign origin": {prepare: func(_ *fakeSessions, r *http.Request) { r.Header.Set("Origin", "https://evil.example") }, subject: testRiderB, code: http.StatusForbidden},
-		"no session":     {prepare: func(_ *fakeSessions, r *http.Request) { r.Header.Del("Cookie") }, subject: testRiderB, code: http.StatusUnauthorized},
-		"unknown rider":  {subject: "auth0|nobody", code: http.StatusBadRequest},
-		"own subject":    {subject: testSubject, code: http.StatusBadRequest},
-		"empty subject":  {subject: "", code: http.StatusBadRequest},
+		"non-admin":       {prepare: func(s *fakeSessions, _ *fakeState, _ *http.Request) { s.identity.Admin = false }, subject: testRiderB, code: http.StatusForbidden},
+		"foreign origin":  {prepare: func(_ *fakeSessions, _ *fakeState, r *http.Request) { r.Header.Set("Origin", "https://evil.example") }, subject: testRiderB, code: http.StatusForbidden},
+		"no session":      {prepare: func(_ *fakeSessions, _ *fakeState, r *http.Request) { r.Header.Del("Cookie") }, subject: testRiderB, code: http.StatusUnauthorized},
+		"expired session": {prepare: func(s *fakeSessions, _ *fakeState, _ *http.Request) { s.verifyErr = assert.AnError }, subject: testRiderB, code: http.StatusUnauthorized},
+		"state down":      {prepare: func(_ *fakeSessions, st *fakeState, _ *http.Request) { st.targetErr = assert.AnError }, subject: testRiderB, code: http.StatusServiceUnavailable},
+		"unknown rider":   {subject: "auth0|nobody", code: http.StatusBadRequest},
+		"own subject":     {subject: testSubject, code: http.StatusBadRequest},
+		"empty subject":   {subject: "", code: http.StatusBadRequest},
 	} {
 		t.Run(name, func(t *testing.T) {
-			sessions := newFakeSessions()
-			handler := newImpersonationHandler(t, sessions)
+			sessions, state := newFakeSessions(), impersonationState()
 			request := impersonateRequest(t, tc.subject)
 			if tc.prepare != nil {
-				tc.prepare(sessions, request)
+				tc.prepare(sessions, state, request)
 			}
+			handler := newImpersonationHandlerWith(t, sessions, state)
 
 			response := httptest.NewRecorder()
 			handler.ServeHTTP(response, request)
@@ -108,6 +119,19 @@ func TestStartImpersonationRefuses(t *testing.T) {
 			assert.Nil(t, setCookie(t, response, impersonatorCookie))
 		})
 	}
+}
+
+func TestStartImpersonationSetsNoCookieWhenTheSessionCannotBeStored(t *testing.T) {
+	sessions := newFakeSessions()
+	sessions.impersonateErr = assert.AnError
+	handler := newImpersonationHandler(t, sessions)
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, impersonateRequest(t, testRiderB))
+
+	assert.Equal(t, http.StatusServiceUnavailable, response.Code)
+	assert.Nil(t, setCookie(t, response, impersonatorCookie))
+	assert.Nil(t, setCookie(t, response, sessionCookie))
 }
 
 func stopRequest(t *testing.T, impersonator string) *http.Request {
@@ -161,6 +185,35 @@ func TestStopImpersonationRefusesAKeptTokenThatIsNoLongerAdmin(t *testing.T) {
 			assert.Negative(t, cleared.MaxAge)
 		})
 	}
+}
+
+func TestStopImpersonationRefusesAForeignOrigin(t *testing.T) {
+	sessions := newFakeSessions()
+	handler := newImpersonationHandler(t, sessions)
+	request := stopRequest(t, testSessionToken)
+	request.Header.Set("Origin", "https://evil.example")
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+
+	assert.Equal(t, http.StatusForbidden, response.Code)
+	assert.Empty(t, sessions.revoked)
+}
+
+// A store that cannot revoke still restores the admin: the impersonated
+// session lapses on its own within the hour.
+func TestStopImpersonationRestoresEvenWhenRevokeFails(t *testing.T) {
+	sessions := newFakeSessions()
+	sessions.revokeErr = assert.AnError
+	handler := newImpersonationHandler(t, sessions)
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, stopRequest(t, testSessionToken))
+
+	assert.Equal(t, http.StatusNoContent, response.Code)
+	restored := setCookie(t, response, sessionCookie)
+	require.NotNil(t, restored)
+	assert.Equal(t, testSessionToken, restored.Value)
 }
 
 func TestStopImpersonationWithoutOneUnderWay(t *testing.T) {
