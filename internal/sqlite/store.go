@@ -19,6 +19,10 @@ import (
 
 const driverName = "sqlite"
 
+// readConnections is how many reads run at once beside the one writer. WAL lets
+// them read committed state while a write is in flight.
+const readConnections = 4
+
 // forwardCompatibleMigrations is how far ahead of this binary a state file may
 // be and still open: one, so a deploy that failed its health gate can roll back
 // onto the previous binary. A release that must stay rollable appends one.
@@ -58,6 +62,7 @@ var (
 // Store is an SQLite-backed state store whose OAuth tokens use AES-GCM at rest.
 type Store struct {
 	database *sql.DB
+	reader   *sql.DB
 	queries  *sqlcgen.Queries
 	aead     cipher.AEAD
 }
@@ -85,10 +90,7 @@ func Open(ctx context.Context, databasePath string, encryptionKey [32]byte) (*St
 	if err != nil {
 		return nil, fmt.Errorf("opening state database: %w", err)
 	}
-	database.SetMaxOpenConns(1)
-	database.SetMaxIdleConns(1)
-
-	store := &Store{database: database, queries: sqlcgen.New(database), aead: aead}
+	store := &Store{database: database, aead: aead}
 	if err := store.configure(ctx); err != nil {
 		closeDatabase(database)
 		return nil, err
@@ -101,17 +103,62 @@ func Open(ctx context.Context, databasePath string, encryptionKey [32]byte) (*St
 		closeDatabase(database)
 		return nil, fmt.Errorf("protecting state database: %w", err)
 	}
+	// sql.Open fails only for an unregistered driver: modernc parses the name on
+	// first connection, which the writer has already made with this DSN.
+	reader, _ := sql.Open(driverName, databaseDSN(databasePath)+"&_pragma=query_only(1)") //nolint:errcheck // Cannot fail.
+	reader.SetMaxOpenConns(readConnections)
+	reader.SetMaxIdleConns(readConnections)
+	store.reader = reader
+	store.queries = sqlcgen.New(routed{writer: database, reader: reader})
 
 	return store, nil
 }
 
-// Close releases the database connection.
+// Close releases the database connections.
 func (s *Store) Close() error {
-	if err := s.database.Close(); err != nil {
+	if err := errors.Join(s.reader.Close(), s.database.Close()); err != nil {
 		return fmt.Errorf("closing state database: %w", err)
 	}
 
 	return nil
+}
+
+// routed sends a statement that only reads to the read pool, so it never waits
+// for the writer's single connection, and every other statement to the writer.
+type routed struct{ writer, reader *sql.DB }
+
+func (r routed) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
+	return r.writer.ExecContext(ctx, query, args...) //nolint:wrapcheck // sqlc's callers wrap.
+}
+
+func (r routed) PrepareContext(ctx context.Context, query string) (*sql.Stmt, error) {
+	return r.writer.PrepareContext(ctx, query) //nolint:wrapcheck // sqlc's callers wrap.
+}
+
+func (r routed) QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
+	return r.pool(query).QueryContext(ctx, query, args...) //nolint:wrapcheck // sqlc's callers wrap.
+}
+
+func (r routed) QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row {
+	return r.pool(query).QueryRowContext(ctx, query, args...)
+}
+
+// pool reads past sqlc's leading "-- name:" comment lines. A statement that
+// writes and returns rows (INSERT ... RETURNING) is not a SELECT, so it stays
+// on the writer.
+func (r routed) pool(query string) *sql.DB {
+	for {
+		query = strings.TrimSpace(query)
+		if !strings.HasPrefix(query, "--") {
+			break
+		}
+		_, query, _ = strings.Cut(query, "\n")
+	}
+	if len(query) >= 6 && strings.EqualFold(query[:6], "SELECT") {
+		return r.reader
+	}
+
+	return r.writer
 }
 
 func (s *Store) configure(ctx context.Context) error {
