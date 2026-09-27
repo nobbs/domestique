@@ -21,6 +21,9 @@ const (
 	// check.
 	sessionLifetime = 24 * time.Hour
 	loginLifetime   = 10 * time.Minute
+	// impersonationLifetime is short because the impersonated subject's own
+	// sign-in claim is never re-checked: only the admin's was.
+	impersonationLifetime = time.Hour
 )
 
 // NotAllowedError reports a subject Auth0 authenticated but did not assert
@@ -190,6 +193,32 @@ func (s *Service) Verify(ctx context.Context, token string) (Identity, error) {
 	}
 
 	return Identity{Subject: subject, Display: display, Nickname: nickname, Admin: admin}, nil
+}
+
+// Impersonate mints a non-admin session for subject. The caller must already
+// have verified an admin session; this method trusts it did.
+func (s *Service) Impersonate(ctx context.Context, subject, display, nickname string) (Completion, error) {
+	if subject == "" {
+		return Completion{}, errors.New("impersonated subject is required")
+	}
+	if display == "" {
+		display = subject
+	}
+	token, digest, err := randomToken()
+	if err != nil {
+		return Completion{}, fmt.Errorf("minting session token: %w", err)
+	}
+	now := s.now()
+	expiresAt := now.Add(impersonationLifetime)
+	if err := s.store.CreateSession(ctx, digest, subject, display, nickname, false, now, expiresAt); err != nil {
+		return Completion{}, fmt.Errorf("storing session: %w", err)
+	}
+
+	return Completion{
+		Token:     token,
+		Identity:  Identity{Subject: subject, Display: display, Nickname: nickname},
+		ExpiresAt: expiresAt,
+	}, nil
 }
 
 // Revoke ends a browser session.

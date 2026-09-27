@@ -24,7 +24,7 @@ import { PageShell } from "../../components/Layout";
 import { PanelHeading } from "../../components/PanelHeading";
 import { Skeleton } from "../../components/ui/skeleton";
 import { formatTimestamp } from "../../lib/format";
-import { useEffectiveAdmin } from "../../lib/identity";
+import { useAdmin } from "../../lib/identity";
 import type { DistanceWindow } from "../../lib/profile";
 import {
   buildActivityProfile,
@@ -164,7 +164,7 @@ export function ActivityPage() {
   const drawable = !track.isError && !!track.data?.bbox && coordinates.length >= 2;
   const navigate = useNavigate();
   const config = useQuery(webUIConfigQuery());
-  const admin = useEffectiveAdmin();
+  const admin = useAdmin();
   const outdoor = !track.data?.world && !ride?.indoor;
   const canPlanFromRide =
     !!config.data?.planning && admin && ride !== undefined && coordinates.length >= 2 && outdoor;

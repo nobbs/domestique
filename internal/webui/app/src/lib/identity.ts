@@ -1,81 +1,20 @@
-/**
- * Whether an admin session is browsing as itself or previewing what a rider
- * sees.
- *
- * The toggle is a UI preview only: the server still admits an admin session
- * regardless of it, so this is not a privilege drop. Remembered the same way
- * `basemap.ts` remembers a basemap choice — one namespaced `localStorage` key,
- * guarded against a browser that refuses storage outright.
- */
-
 import { useQuery } from "@tanstack/react-query";
-import { useCallback, useSyncExternalStore } from "react";
 import { webUIConfigQuery } from "../api/queries";
 
-const STORAGE_KEY = "domestique.viewAsRider";
-
-// Consumers share one screen (unlike units.ts's), so a flip must reach
-// every one of them at once rather than wait for a remount.
-const listeners = new Set<() => void>();
-
-function subscribe(listener: () => void): () => void {
-  listeners.add(listener);
-
-  return () => listeners.delete(listener);
-}
-
-/** The admin's own preview choice, remembered across visits and shared live across every consumer. */
-export function useViewAsRider(): [boolean, (value: boolean) => void] {
-  const value = useSyncExternalStore(subscribe, readViewAsRider);
-
-  const choose = useCallback((next: boolean) => {
-    writeViewAsRider(next);
-    for (const listener of listeners) {
-      listener();
-    }
-  }, []);
-
-  return [value, choose];
-}
-
-// Memory is the source of truth after one load from storage, so a failed
-// `setItem` cannot let the next read undo a flip.
-let current = false;
-let loaded = false;
-
-function readViewAsRider(): boolean {
-  if (!loaded) {
-    loaded = true;
-    try {
-      current = window.localStorage.getItem(STORAGE_KEY) === "true";
-    } catch {}
-  }
-
-  return current;
-}
-
-function writeViewAsRider(value: boolean): void {
-  current = value;
-  loaded = true;
-  try {
-    window.localStorage.setItem(STORAGE_KEY, String(value));
-  } catch {
-    // Remembering is the whole of what is lost, and the pick still stands for
-    // as long as the page is open.
-  }
-}
-
 /**
- * `identity.admin`, minus a "view as rider" preview the admin has switched
- * on. False while identity is still loading, so every branch that reads this
- * waits on the same answer rather than flashing an admin-only control first.
- *
- * The one place that must keep reading `identity.admin` directly is the
- * switch itself — otherwise it would vanish the moment it is flipped on.
+ * `identity.admin`, false while identity is still loading so no admin-only
+ * control flashes before the answer arrives.
  */
-export function useEffectiveAdmin(): boolean {
+export function useAdmin(): boolean {
   const { data } = useQuery(webUIConfigQuery());
-  const [viewAsRider] = useViewAsRider();
 
-  return (data?.identity.admin ?? false) && !viewAsRider;
+  return data?.identity.admin ?? false;
+}
+
+/** Restores the admin's own session; a refusal lands on sign-in either way. */
+export async function stopImpersonating(): Promise<void> {
+  await fetch("/auth/impersonate/stop", { method: "POST", credentials: "same-origin" }).catch(
+    () => undefined,
+  );
+  window.location.assign("/");
 }

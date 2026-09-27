@@ -173,7 +173,8 @@ reachable from host-local health checking alone.
 
 The unauthenticated surface is exactly `GET /healthz`, `GET /auth/login` — the
 application entry document, offering a sign-in and writing nothing — `POST
-/auth/start`, `GET /auth/callback`, `POST /auth/logout`, and the build
+/auth/start`, `GET /auth/callback`, `POST /auth/logout`, the two
+impersonation routes below, which check a session themselves, and the build
 artefacts that document loads: the hashed assets under `/assets/`, the
 favicon, the two installed-copy icons, and the manifest. Those artefacts are
 compiled output holding no state and no route data, and the sign-in page
@@ -233,7 +234,19 @@ expiry — not renewed on use, so a subject is forced back through a real Auth0
 round-trip within a day of any change to the Action's own decision. Signing
 out revokes it server-side. Sessions live in the state database and share its
 fate: a lost database signs every subject out, which is a sign-in problem
-rather than a recovery one. No identity header — `Cf-Access-Jwt-Assertion`,
+rather than a recovery one.
+
+An admin may impersonate a rider: `POST /auth/impersonate` with a form field
+`subject` naming a target owner other than itself swaps its session cookie for
+a new non-admin session held by that subject, and keeps its own token aside in
+`__Host-domestique_impersonator`. The impersonated session lasts one hour, not
+24: the rider's own sign-in claim is never re-checked, only the admin's was.
+`POST /auth/impersonate/stop` revokes the impersonated session and restores
+the kept token only while it still verifies as admin; otherwise the caller is
+left signed out. Signing out while impersonating revokes both sessions, and
+completing a sign-in revokes and clears any kept token.
+
+No identity header — `Cf-Access-Jwt-Assertion`,
 `Cf-Access-Authenticated-User-Email`, or `Tailscale-User-Login` — is ever read.
 
 Every state-changing endpoint additionally requires an `Origin` header exactly
@@ -372,6 +385,8 @@ operations the sections below name:
 - `GET /auth/callback` validates the returned authorisation code and issues a
   session, on the terms described above.
 - `POST /auth/logout` revokes the caller's session and always answers `204`.
+- `POST /auth/impersonate` and `POST /auth/impersonate/stop` start and end an
+  admin's impersonation of a rider, on the terms described above.
 - `GET /oauth/wahoo/start` starts authorisation for the caller's own target,
   creating it on first use. The browser is never told its own subject, so this
   bare path is the only way a caller with no target yet can start one at all.

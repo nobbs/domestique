@@ -1055,6 +1055,8 @@ type BrowserIdentity struct {
 	Display string `json:"display"`
 	// Admin Whether this subject holds cross-subject rights. Asserted by the same Auth0 Action that separately decides whether this subject may sign in at all — that decision is what admits the session in the first place, and holds regardless of this field's value.
 	Admin bool `json:"admin"`
+	// Impersonating Whether this session is an admin browsing as another rider, whose own session POST /auth/impersonate/stop restores. Absent means no.
+	Impersonating *bool `json:"impersonating,omitempty"`
 }
 
 type SourceBaseUrls struct {

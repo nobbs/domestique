@@ -36,7 +36,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { webUIConfigQuery } from "../api/queries";
-import { useEffectiveAdmin } from "../lib/identity";
+import { useAdmin } from "../lib/identity";
 import { useFittingCount } from "../lib/useFittingCount";
 import { Wordmark } from "./brand/Wordmark";
 import { SearchButton } from "./SearchButton";
@@ -85,12 +85,12 @@ const TRIGGER_CLASS =
 
 export function MenuBar() {
   const { data: config } = useQuery(webUIConfigQuery());
-  const effectiveAdmin = useEffectiveAdmin();
+  const admin = useAdmin();
   const destinations = [
     ACTIVITIES_DESTINATION,
-    ...(config?.planning && effectiveAdmin ? [PLAN_DESTINATION] : []),
+    ...(config?.planning && admin ? [PLAN_DESTINATION] : []),
     ...REST_DESTINATIONS,
-    ...(effectiveAdmin ? [ADMIN_DESTINATION] : []),
+    ...(admin ? [ADMIN_DESTINATION] : []),
   ];
   const { pathname } = useLocation();
   const { frameRef, measureRef, visible } = useFittingCount(destinations.length);

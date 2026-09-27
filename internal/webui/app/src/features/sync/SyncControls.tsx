@@ -24,7 +24,7 @@ import { InsetList } from "../../components/InsetList";
 import { Skeleton } from "../../components/ui/skeleton";
 import { Spinner } from "../../components/ui/spinner";
 import { formatCadence, formatTimestamp } from "../../lib/format";
-import { useEffectiveAdmin } from "../../lib/identity";
+import { useAdmin } from "../../lib/identity";
 import { syncGuidance } from "../../lib/syncGuidance";
 import { phaseLabels, runningPhaseLabels } from "../../lib/syncLabels";
 import { SyncPhaseRow } from "./SyncPhaseRow";
@@ -109,7 +109,7 @@ export function SyncControls() {
   // Both phase run buttons and the classification retry run a task over
   // every target or the whole library, not the caller's own — an admin-only
   // trigger regardless of which half it starts.
-  const effectiveAdmin = useEffectiveAdmin();
+  const admin = useAdmin();
   // The sources this build can name, which is every provider a base URL is
   // configured for. Unresolved while the config is still loading, which reads
   // as the generic phrase below rather than blocking on a second query.
@@ -181,7 +181,7 @@ export function SyncControls() {
             <>
               {" "}
               {data.sync.surface.incomplete} could not be classified last time.{" "}
-              {effectiveAdmin ? (
+              {admin ? (
                 <Button
                   variant="outline"
                   disabled={retryClassification.isPending}
@@ -225,9 +225,7 @@ export function SyncControls() {
               scheduleDisabled={schedule.isPending}
               onToggle={() => toggle(phase)}
               running={run.isPending}
-              onRun={
-                effectiveAdmin ? () => run.mutate({ name: SYNC_PHASE_TASKS[phase] }) : undefined
-              }
+              onRun={admin ? () => run.mutate({ name: SYNC_PHASE_TASKS[phase] }) : undefined}
             />
           );
         })}

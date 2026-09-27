@@ -8,20 +8,20 @@ import type { Status, TargetStatus, WebUIConfig } from "../api/types";
 import { IDLE_STATUS } from "../test/status";
 import { initialsOf, UserPill } from "./UserPill";
 
-function config(admin: boolean): WebUIConfig {
+function config(admin: boolean, impersonating = false): WebUIConfig {
   return {
     basemaps: [],
     sourceBaseUrls: {},
     timezone: "Europe/Berlin",
-    identity: { display: "rider@example.test", admin },
+    identity: { display: "rider@example.test", admin, ...(impersonating ? { impersonating } : {}) },
   };
 }
 
-function renderPill(admin: boolean, status: Status = IDLE_STATUS) {
+function renderPill(admin: boolean, status: Status = IDLE_STATUS, impersonating = false) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: Number.POSITIVE_INFINITY } },
   });
-  client.setQueryData(webUIConfigQuery().queryKey, config(admin));
+  client.setQueryData(webUIConfigQuery().queryKey, config(admin, impersonating));
   client.setQueryData(statusQuery().queryKey, status);
 
   return render(
@@ -31,17 +31,6 @@ function renderPill(admin: boolean, status: Status = IDLE_STATUS) {
       </MemoryRouter>
     </QueryClientProvider>,
   );
-}
-
-/** A `localStorage` for jsdom, which has none. See `basemap.test.ts` for why a `Map` behind the two methods the hook uses is enough. */
-function stubStorage(): void {
-  const entries = new Map<string, string>();
-  vi.stubGlobal("localStorage", {
-    getItem: (key: string) => entries.get(key) ?? null,
-    setItem: (key: string, value: string) => {
-      entries.set(key, value);
-    },
-  });
 }
 
 afterEach(() => {
@@ -81,39 +70,64 @@ describe("the account link", () => {
   });
 });
 
-describe("the view-as-rider switch", () => {
-  it("is offered to an admin", async () => {
-    stubStorage();
-    renderPill(true);
+const TARGET: TargetStatus = {
+  id: "admin",
+  authorisation: "authorized",
+  convergence: "current",
+  routes: { current: 0, pending: 0 },
+};
+const RIDERS: Status = {
+  ...IDLE_STATUS,
+  targets: [
+    { ...TARGET, owner: "admin", own: true },
+    { ...TARGET, id: "rider-b", owner: "rider-b", own: false, ownerNickname: "Bee" },
+  ],
+};
+
+/** A `fetch` that answers every request with 204 and records it. */
+function stubOkFetch() {
+  const calls = vi.fn((_input: RequestInfo | URL, _init?: RequestInit) =>
+    Promise.resolve(new Response(null, { status: 204 })),
+  );
+  vi.stubGlobal("fetch", calls);
+
+  return calls;
+}
+
+describe("impersonation", () => {
+  it("offers an admin every other rider, and asks to view as the one picked", async () => {
+    const calls = stubOkFetch();
+    renderPill(true, RIDERS);
 
     await userEvent.click(screen.getByRole("button", { name: /Signed in as/ }));
+    await userEvent.click(await screen.findByRole("menuitem", { name: "View as…" }));
+    await userEvent.click(await screen.findByRole("menuitem", { name: "Bee" }));
 
-    expect(
-      await screen.findByRole("menuitemcheckbox", { name: "View as rider" }),
-    ).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "admin" })).not.toBeInTheDocument();
+    const [input, init] = calls.mock.calls[0] ?? [];
+    expect(input).toBe("/auth/impersonate");
+    expect(String(init?.body)).toBe("subject=rider-b");
   });
 
   it("is not offered to a non-admin", async () => {
-    stubStorage();
-    renderPill(false);
+    renderPill(false, RIDERS);
 
     await userEvent.click(screen.getByRole("button", { name: /Signed in as/ }));
 
     expect(await screen.findByRole("menu")).toBeInTheDocument();
-    expect(
-      screen.queryByRole("menuitemcheckbox", { name: "View as rider" }),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "View as…" })).not.toBeInTheDocument();
   });
 
-  it("persists the flip to localStorage", async () => {
-    stubStorage();
-    renderPill(true);
+  it("says whose session this is while impersonating, and offers the way back", async () => {
+    const calls = stubOkFetch();
+    renderPill(false, IDLE_STATUS, true);
 
-    await userEvent.click(screen.getByRole("button", { name: /Signed in as/ }));
-    const toggle = await screen.findByRole("menuitemcheckbox", { name: "View as rider" });
-    await userEvent.click(toggle);
+    await userEvent.click(screen.getByRole("button", { name: "Viewing as rider@example.test" }));
+    await userEvent.click(
+      await screen.findByRole("menuitem", { name: "Stop viewing as rider@example.test" }),
+    );
 
-    expect(window.localStorage.getItem("domestique.viewAsRider")).toBe("true");
+    expect(calls.mock.calls[0]?.[0]).toBe("/auth/impersonate/stop");
   });
 });
 

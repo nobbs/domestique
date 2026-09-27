@@ -13,22 +13,24 @@
  * opening anything, and the menu spells it out for everyone else.
  */
 
-import { IconLogout, IconUserCircle } from "@tabler/icons-react";
+import { IconArrowBackUp, IconEye, IconLogout, IconUserCircle } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { NavLink } from "react-router";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   DropdownMenu,
-  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { statusQuery, webUIConfigQuery } from "../api/queries";
-import { useViewAsRider } from "../lib/identity";
+import { stopImpersonating } from "../lib/identity";
 import { type StateTone, syncState } from "../lib/syncState";
 import { Button } from "./Button";
 
@@ -41,6 +43,21 @@ async function signOut(): Promise<void> {
     () => undefined,
   );
   window.location.assign("/auth/login");
+}
+
+/**
+ * Swaps this admin session for one held by `subject`, reloading so nothing the
+ * admin's session fetched is shown under the rider's name.
+ */
+async function impersonate(subject: string): Promise<void> {
+  const response = await fetch("/auth/impersonate", {
+    method: "POST",
+    credentials: "same-origin",
+    body: new URLSearchParams({ subject }),
+  }).catch(() => undefined);
+  if (response?.ok) {
+    window.location.assign("/");
+  }
 }
 
 /**
@@ -79,7 +96,13 @@ export function UserPill() {
   const { data: status } = useQuery(statusQuery());
   const state = status ? syncState(status) : null;
   const identity = data?.identity;
-  const [viewAsRider, setViewAsRider] = useViewAsRider();
+  // Target owners other than this admin, once each: the riders it may view as.
+  const riders = new Map<string, string>();
+  for (const target of status?.targets ?? []) {
+    if (target.owner && !target.own) {
+      riders.set(target.owner, target.ownerNickname ?? target.owner);
+    }
+  }
 
   /*
    * Nothing at all until the configuration has arrived, and nothing ever if it
@@ -96,9 +119,12 @@ export function UserPill() {
         // The circle holds initials, which are an abbreviation and not a name.
         // What it is is the session, and whose it is is the account, so both
         // are said here rather than left to the two letters to imply.
-        aria-label={`Signed in as ${identity.display}`}
+        aria-label={`${identity.impersonating ? "Viewing as" : "Signed in as"} ${identity.display}`}
         render={
-          <Button className="relative size-8 shrink-0 rounded-full p-0" variant="ghost">
+          <Button
+            className={`relative size-8 shrink-0 rounded-full p-0 ${identity.impersonating ? "ring-2 ring-[var(--hold)]" : ""}`}
+            variant="ghost"
+          >
             <Avatar>
               <AvatarFallback>{initialsOf(identity.display)}</AvatarFallback>
             </Avatar>
@@ -118,7 +144,7 @@ export function UserPill() {
         <DropdownMenuGroup>
           <DropdownMenuLabel className="wrap-anywhere whitespace-normal">
             <div className="text-[10px] tracking-wide text-[var(--ink-2)] uppercase">
-              Signed in as
+              {identity.impersonating ? "Viewing as" : "Signed in as"}
             </div>
             <div>{identity.display}</div>
           </DropdownMenuLabel>
@@ -138,14 +164,29 @@ export function UserPill() {
           <Dot tone={state?.tone} className="ml-auto" />
         </DropdownMenuItem>
         <DropdownMenuSeparator />
-        {/* The raw flag, not `useEffectiveAdmin`: this is the one control that
-            must keep showing even after it is switched on, or it could never
-            be switched off again. */}
-        {identity.admin ? (
+        {identity.impersonating ? (
           <>
-            <DropdownMenuCheckboxItem checked={viewAsRider} onCheckedChange={setViewAsRider}>
-              View as rider
-            </DropdownMenuCheckboxItem>
+            <DropdownMenuItem onClick={() => void stopImpersonating()}>
+              <IconArrowBackUp stroke={1.6} />
+              Stop viewing as {identity.display}
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+          </>
+        ) : identity.admin && riders.size > 0 ? (
+          <>
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger>
+                <IconEye stroke={1.6} />
+                View as…
+              </DropdownMenuSubTrigger>
+              <DropdownMenuSubContent>
+                {[...riders].map(([subject, label]) => (
+                  <DropdownMenuItem key={subject} onClick={() => void impersonate(subject)}>
+                    {label}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
             <DropdownMenuSeparator />
           </>
         ) : null}

@@ -3,7 +3,6 @@ import type { ReactNode } from "react";
 import { useLayoutEffect } from "react";
 import { Navigate, Route, Routes, useLocation, useParams, useSearchParams } from "react-router";
 import { webUIConfigQuery } from "./api/queries";
-import { Button } from "./components/Button";
 import { Unavailable } from "./components/Unavailable";
 import { AccountPage } from "./features/account/AccountPage";
 import { ActivitiesPage } from "./features/activity/ActivitiesPage";
@@ -14,7 +13,7 @@ import { FitnessPage } from "./features/fitness/FitnessPage";
 import { PlanPage } from "./features/plan/PlanPage";
 import { AtlasPage } from "./features/routes/AtlasPage";
 import { SearchPalette } from "./features/search/SearchPalette";
-import { useEffectiveAdmin, useViewAsRider } from "./lib/identity";
+import { useAdmin } from "./lib/identity";
 import { parseRouteKey, routePath } from "./lib/library";
 import { SearchPaletteProvider } from "./lib/searchPalette";
 import { type ThemeChoice, useThemeChoice } from "./lib/theme";
@@ -25,55 +24,28 @@ import { type ThemeChoice, useThemeChoice } from "./lib/theme";
  * paint, before their own config has even arrived.
  */
 function AdminOnly({ children }: { children: ReactNode }) {
-  const { data, isPending } = useQuery(webUIConfigQuery());
-  const effectiveAdmin = useEffectiveAdmin();
-  const [viewAsRider, setViewAsRider] = useViewAsRider();
+  const { isPending } = useQuery(webUIConfigQuery());
+  const admin = useAdmin();
 
   if (isPending) {
     return null;
   }
-  if (effectiveAdmin) {
+  if (admin) {
     return children;
-  }
-  if (data?.identity.admin && viewAsRider) {
-    return <RiderPreview onLeave={() => setViewAsRider(false)} />;
   }
 
   return <Navigate to="/account" replace />;
 }
 
-/**
- * What an admin sees where their own preview has taken a page away, rather
- * than the address changing under them with nothing to say why.
- */
-function RiderPreview({ onLeave }: { onLeave: () => void }) {
-  return (
-    <Unavailable
-      title="Hidden while you view as a rider"
-      detail="This page belongs to an administrator, and the rider view is switched on for this browser. Leaving it brings the page straight back."
-      action={
-        <Button variant="default" onClick={onLeave}>
-          Leave rider view
-        </Button>
-      }
-    />
-  );
-}
-
 /** The planner exists only where an admin and a routing engine do. */
 function PlanningOnly({ children }: { children: ReactNode }) {
   const { data, isPending } = useQuery(webUIConfigQuery());
-  const effectiveAdmin = useEffectiveAdmin();
-  const [viewAsRider, setViewAsRider] = useViewAsRider();
 
   if (isPending) {
     return null;
   }
-  if (data?.planning && effectiveAdmin) {
+  if (data?.planning && data.identity.admin) {
     return children;
-  }
-  if (data?.identity.admin && viewAsRider) {
-    return <RiderPreview onLeave={() => setViewAsRider(false)} />;
   }
   if (data?.identity.admin) {
     return (

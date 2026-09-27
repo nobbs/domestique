@@ -1,9 +1,10 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { expect, screen, userEvent, within } from "storybook/test";
-import { webUIConfigQuery } from "../api/queries";
-import type { WebUIConfig } from "../api/types";
+import { statusQuery, webUIConfigQuery } from "../api/queries";
+import type { Status, WebUIConfig } from "../api/types";
 import { StoryProviders } from "../storybook/fixtures";
+import { IDLE_STATUS } from "../test/status";
 import { UserPill } from "./UserPill";
 
 const meta = {
@@ -38,7 +39,10 @@ type Story = StoryObj<typeof meta>;
  * closest provider, so the fixture's client is shadowed for this one query and
  * the router it also mounts stays where it is.
  */
-function withConfig(value?: WebUIConfig): NonNullable<Meta<typeof UserPill>["decorators"]> {
+function withConfig(
+  value?: WebUIConfig,
+  status?: Status,
+): NonNullable<Meta<typeof UserPill>["decorators"]> {
   return [
     (Story) => {
       // `enabled: false` because every story here seeds what it wants read.
@@ -52,6 +56,9 @@ function withConfig(value?: WebUIConfig): NonNullable<Meta<typeof UserPill>["dec
       });
       if (value) {
         client.setQueryData(webUIConfigQuery().queryKey, value);
+      }
+      if (status) {
+        client.setQueryData(statusQuery().queryKey, status);
       }
 
       return (
@@ -94,15 +101,60 @@ export const SignedIn: Story = {
   },
 };
 
-/** An admin session, which alone is offered the rider-view preview switch. */
+/** An admin session with no other rider to view as, so no picker is offered. */
 export const Admin: Story = {
   decorators: withConfig({ ...config(), identity: { display: "admin@example.test", admin: true } }),
   play: async ({ canvas }) => {
     await userEvent.click(canvas.getByRole("button", { name: /Signed in as/ }));
 
     const menu = await screen.findByRole("menu", {}, menuAppears);
+    await expect(within(menu).queryByRole("menuitem", { name: "View as…" })).toBeNull();
+  },
+};
+
+const RIDER_TARGET = {
+  authorisation: "authorized",
+  convergence: "current",
+  routes: { current: 12, pending: 0 },
+} as const;
+
+/** An admin with other riders to view as, offered under "View as…". */
+export const AdminWithRiders: Story = {
+  decorators: withConfig(
+    { ...config(), identity: { display: "admin@example.test", admin: true } },
+    {
+      ...IDLE_STATUS,
+      targets: [
+        { ...RIDER_TARGET, id: "admin", owner: "admin", own: true },
+        {
+          ...RIDER_TARGET,
+          id: "rider-b",
+          owner: "auth0|rider-b",
+          own: false,
+          ownerNickname: "Nina",
+        },
+        { ...RIDER_TARGET, id: "rider-c", owner: "auth0|rider-c", own: false },
+      ],
+    },
+  ),
+  play: async ({ canvas }) => {
+    await userEvent.click(canvas.getByRole("button", { name: /Signed in as/ }));
+    const menu = await screen.findByRole("menu", {}, menuAppears);
+    await expect(within(menu).getByRole("menuitem", { name: "View as…" })).toBeInTheDocument();
+  },
+};
+
+/** An admin viewing the service as a rider: marked, and one click from home. */
+export const Impersonating: Story = {
+  decorators: withConfig({
+    ...config(),
+    identity: { display: "nina@example.test", admin: false, impersonating: true },
+  }),
+  play: async ({ canvas }) => {
+    await userEvent.click(canvas.getByRole("button", { name: "Viewing as nina@example.test" }));
+    const menu = await screen.findByRole("menu", {}, menuAppears);
     await expect(
-      within(menu).getByRole("menuitemcheckbox", { name: "View as rider" }),
+      within(menu).getByRole("menuitem", { name: "Stop viewing as nina@example.test" }),
     ).toBeInTheDocument();
   },
 };

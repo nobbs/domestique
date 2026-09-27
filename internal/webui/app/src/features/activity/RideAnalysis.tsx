@@ -27,7 +27,7 @@ import type { Activity, ActivityAnalysisDocument } from "../../api/types";
 import { Button } from "../../components/Button";
 import { PanelHeading } from "../../components/PanelHeading";
 import { formatTimestamp } from "../../lib/format";
-import { useEffectiveAdmin } from "../../lib/identity";
+import { useAdmin } from "../../lib/identity";
 import { calendarDay } from "../fitness/DecouplingPanel";
 import { signed } from "../fitness/form";
 
@@ -65,7 +65,7 @@ export function fitnessWindowFor(rideDay: string): { from: string; to: string } 
 }
 
 export function RideAnalysis({ ride }: { ride: Activity | undefined }) {
-  const admin = useEffectiveAdmin();
+  const admin = useAdmin();
   const tasks = useQuery({ ...tasksQuery(), enabled: admin });
   const config = useQuery(webUIConfigQuery());
   const reanalyse = useReanalyseActivity();

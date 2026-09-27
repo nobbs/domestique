@@ -20,11 +20,14 @@ import (
 	"github.com/nobbs/domestique/internal/session"
 )
 
-// The two cookies this service sets. The `__Host-` prefix is enforced by the
+// The cookies this service sets. The `__Host-` prefix is enforced by the
 // browser only, so Secure, Path=/ and the absent Domain are set by hand too.
 const (
 	sessionCookie = "__Host-domestique_session"
 	loginCookie   = "__Host-domestique_login"
+	// impersonatorCookie holds an admin's own session token while it browses
+	// as another subject, so stopping restores it without a sign-in.
+	impersonatorCookie = "__Host-domestique_impersonator"
 )
 
 // loginCookieSeconds bounds a sign-in that was started and never finished. It
@@ -407,6 +410,8 @@ func (h *Handler) routes() {
 	h.mux.HandleFunc("POST /auth/start", h.StartLogin)
 	h.mux.HandleFunc("GET /auth/callback", h.CompleteLogin)
 	h.mux.HandleFunc("POST /auth/logout", h.Logout)
+	h.mux.HandleFunc("POST /auth/impersonate", h.StartImpersonation)
+	h.mux.HandleFunc("POST /auth/impersonate/stop", h.StopImpersonation)
 	// The bare path is a rider connecting their own account: the browser is
 	// never told its own subject, so this is the only way a caller with no
 	// target yet can start one at all.
@@ -622,8 +627,14 @@ func (h *Handler) unauthenticated(writer http.ResponseWriter, request *http.Requ
 // prefix requires is set by hand: the prefix is a browser-side check, not a
 // browser-side default.
 func (h *Handler) setSessionCookie(writer http.ResponseWriter, token string, expiresAt time.Time) {
+	h.setTokenCookie(writer, sessionCookie, token, expiresAt)
+}
+
+// setTokenCookie issues one session-bearing cookie; a zero expiresAt makes it
+// last as long as the browser session.
+func (h *Handler) setTokenCookie(writer http.ResponseWriter, name, token string, expiresAt time.Time) {
 	http.SetCookie(writer, &http.Cookie{
-		Name:     sessionCookie,
+		Name:     name,
 		Value:    token,
 		Path:     "/",
 		Expires:  expiresAt,

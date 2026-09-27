@@ -480,6 +480,9 @@ type Sessions interface {
 	Begin(ctx context.Context) (session.Login, error)
 	Complete(ctx context.Context, state, cookieState, code string) (session.Completion, error)
 	Revoke(ctx context.Context, token string) error
+	// Impersonate mints a non-admin session for subject; the caller has
+	// already verified an admin session.
+	Impersonate(ctx context.Context, subject, display, nickname string) (session.Completion, error)
 }
 
 // WeatherSeries is one coordinate's hourly forecast, column-oriented: index i

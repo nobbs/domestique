@@ -34,7 +34,7 @@ import { Dialog, DialogOverlay, DialogPortal } from "../../components/ui/dialog"
 import { basemapFor, useBasemapChoice, usePrefersDarkScheme } from "../../lib/basemap";
 import { hasActiveFilters, matchesFilters } from "../../lib/filters";
 import { formatAscent, formatDistance, formatMovingTime } from "../../lib/format";
-import { useEffectiveAdmin } from "../../lib/identity";
+import { useAdmin } from "../../lib/identity";
 import { matchesText, matchingRoutes, routePath } from "../../lib/library";
 import { useMediaQuery } from "../../lib/mediaQuery";
 import { haversineMetres, rangeBounds } from "../../lib/profile";
@@ -84,7 +84,7 @@ export function SearchPalette({ themeChoice }: { themeChoice: ThemeChoice }) {
   const routes = useQuery({ ...routesQuery(), enabled: open });
   const library = useMemo(() => routes.data ?? [], [routes.data]);
   const config = useQuery(webUIConfigQuery());
-  const planner = useEffectiveAdmin() && config.data?.planning === true;
+  const planner = useAdmin() && config.data?.planning === true;
   const plans = useQuery({ ...getListPlansQueryOptions(), enabled: open && planner });
 
   const nearest = order.some((key) => key.column === "start");

@@ -4600,6 +4600,11 @@ components:
             same Auth0 Action that separately decides whether this subject
             may sign in at all — that decision is what admits the session in
             the first place, and holds regardless of this field's value.
+        impersonating:
+          type: boolean
+          description: >-
+            Whether this session is an admin browsing as another rider, whose
+            own session POST /auth/impersonate/stop restores. Absent means no.
     SourceBaseUrls:
       type: object
       additionalProperties: false

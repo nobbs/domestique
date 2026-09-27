@@ -34,8 +34,9 @@ func (h *Handler) GetWebUIConfig(writer http.ResponseWriter, request *http.Reque
 		Basemaps: basemaps,
 		Timezone: h.settings.Values().Timezone,
 		Identity: openapi.BrowserIdentity{
-			Display: identity.Display,
-			Admin:   identity.Admin,
+			Display:       identity.Display,
+			Admin:         identity.Admin,
+			Impersonating: optionalBool(impersonating(request)),
 		},
 		Planning:   optionalBool(h.plans != nil),
 		PlaceNames: optionalBool(h.places != nil),
@@ -175,4 +176,12 @@ func (h *Handler) GetIcon256(writer http.ResponseWriter, request *http.Request) 
 // GetIcon512 serves the larger installed-application icon.
 func (h *Handler) GetIcon512(writer http.ResponseWriter, request *http.Request) {
 	h.stableAsset(writer, request)
+}
+
+// impersonating reports whether an admin's own token is set aside. The cookie
+// is not verified here: it only labels the page, and stopping verifies it.
+func impersonating(request *http.Request) bool {
+	_, err := request.Cookie(impersonatorCookie)
+
+	return err == nil
 }

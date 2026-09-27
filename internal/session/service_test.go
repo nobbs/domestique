@@ -125,6 +125,41 @@ func TestCompleteAndVerifyRoundTripTheAdminClaim(t *testing.T) {
 	assert.True(t, identity.Admin)
 }
 
+// An impersonated session is never admin and lapses after
+// impersonationLifetime, not sessionLifetime.
+func TestImpersonateMintsAShortLivedNonAdminSession(t *testing.T) {
+	store := newFakeStore()
+	clock := newFakeClock()
+	service, err := New(store, &fakeProvider{}, clock.now)
+	require.NoError(t, err)
+
+	completion, err := service.Impersonate(t.Context(), "rider-b", "", "Bee")
+	require.NoError(t, err)
+	assert.Equal(t, clock.now().Add(impersonationLifetime), completion.ExpiresAt)
+
+	identity, err := service.Verify(t.Context(), completion.Token)
+	require.NoError(t, err)
+	assert.Equal(t, Identity{Subject: "rider-b", Display: "rider-b", Nickname: "Bee"}, identity)
+
+	clock.advance(impersonationLifetime)
+	_, err = service.Verify(t.Context(), completion.Token)
+	require.Error(t, err)
+}
+
+func TestImpersonateRefusesAnEmptySubjectAndPropagatesStoreErrors(t *testing.T) {
+	store := newFakeStore()
+	service, err := New(store, &fakeProvider{}, newFakeClock().now)
+	require.NoError(t, err)
+
+	_, err = service.Impersonate(t.Context(), "", "", "")
+	require.Error(t, err)
+	assert.Empty(t, store.sessions)
+
+	store.createSessionErr = errors.New("disk full")
+	_, err = service.Impersonate(t.Context(), "rider-b", "b", "")
+	require.Error(t, err)
+}
+
 func TestCompleteDisplayFallsBackToNameThenSubject(t *testing.T) {
 	store := newFakeStore()
 	clock := newFakeClock()
