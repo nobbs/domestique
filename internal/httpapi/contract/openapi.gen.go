@@ -937,15 +937,24 @@ type RiderParameters struct {
 	RollingResistance *float64 `json:"rollingResistance,omitempty"`
 }
 
-// RiderSuggestions What the rider's rides of the last ninety days say some of these numbers could be, offered beside the controls and stored nowhere. A parameter no ride carried a sensor for is absent rather than zero.
+// RiderSuggestions What the rider's rides of the last ninety days say some of these numbers could be, offered beside the controls; the ride-derived figures are worked out on each read and stored nowhere, and only `zwift` is kept, as the last Zwift poll read it. A parameter no ride carried a sensor for is absent rather than zero. The FTP suggestion alone falls back to the last twelve months when the ninety-day window yields no FTP estimate.
 type RiderSuggestions struct {
 	// MaxHeartRateBpm The highest heart rate held over a rolling minute.
 	MaxHeartRateBpm *float64 `json:"maxHeartRateBpm,omitempty"`
 	// ThresholdHeartRateBpm The best rolling twenty-minute average heart rate, unscaled. Only a genuine lactate threshold reading if that twenty minutes was a maximal, evenly paced effort -- over ordinary rides it reads high or low depending on what was ridden.
 	ThresholdHeartRateBpm *float64 `json:"thresholdHeartRateBpm,omitempty"`
-	// FunctionalThresholdPowerWatts The greater of two estimates: the best twenty-minute average power taken at 95%, and a ramp-test estimate off the best minute.
-	FunctionalThresholdPowerWatts *float64            `json:"functionalThresholdPowerWatts,omitempty"`
-	Stopping                      *StoppingSuggestion `json:"stopping,omitempty"`
+	// FunctionalThresholdPowerWatts The greater of two estimates: the best twenty-minute average power taken at 95%, and a ramp-test estimate off the best minute. Read over the last ninety days, or the last twelve months when those held none.
+	FunctionalThresholdPowerWatts *float64 `json:"functionalThresholdPowerWatts,omitempty"`
+	// FunctionalThresholdPowerFrom The start of the ride functionalThresholdPowerWatts was taken from. Present only alongside that suggestion.
+	FunctionalThresholdPowerFrom *time.Time            `json:"functionalThresholdPowerFrom,omitempty"`
+	Zwift                        *RiderZwiftSuggestion `json:"zwift,omitempty"`
+	Stopping                     *StoppingSuggestion   `json:"stopping,omitempty"`
+}
+
+// RiderZwiftSuggestion The FTP Zwift's own profile carried at the rider's last Zwift poll, read from the profile response the poll already fetches and never by a call this page makes. Absent when the rider has no Zwift credentials or the last poll's profile held no positive FTP, and removed when either credential is changed or removed.
+type RiderZwiftSuggestion struct {
+	FunctionalThresholdPowerWatts float64   `json:"functionalThresholdPowerWatts"`
+	ReadAt                        time.Time `json:"readAt"`
 }
 
 // StoppingSuggestion How long the rider stood still per hour of moving over their own outdoor rides under their own power in the last ninety days, as a median and the quartiles either side of it. An indoor ride stands still without stopping and a motor does not stop for a cafe, so neither is counted. Measured over the caller's own targets alone and never pooled across riders, and absent until enough rides carry it.

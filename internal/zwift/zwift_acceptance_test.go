@@ -39,11 +39,11 @@ func TestZwiftAcceptance(t *testing.T) {
 	assert.NotEmpty(t, session.AccessToken, "token response carried no access token")
 	assert.NotEmpty(t, session.RefreshToken, "token response carried no refresh token")
 
-	playerID, err := client.PlayerID(ctx, session)
-	require.NoError(t, err, "reading the signed-in rider's own player id")
-	require.Positive(t, playerID)
+	profile, err := client.Profile(ctx, session)
+	require.NoError(t, err, "reading the signed-in rider's own profile")
+	require.Positive(t, profile.ID)
 
-	listing, err := client.Activities(ctx, session, playerID, 0, 20)
+	listing, err := client.Activities(ctx, session, profile.ID, 0, 20)
 	require.NoError(t, err, "listing the newest activities")
 	index := slices.IndexFunc(listing, func(one zwift.Activity) bool { return one.Sport == "CYCLING" })
 	require.NotEqual(t, -1, index, "this account's newest activities hold no ride to verify against")

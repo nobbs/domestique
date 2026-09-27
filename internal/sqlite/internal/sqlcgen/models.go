@@ -294,6 +294,12 @@ type RiderProfile struct {
 	RollingResistance             sql.NullFloat64
 }
 
+type RiderZwiftProfile struct {
+	Subject    string
+	FtpWatts   float64
+	ReadAtUnix int64
+}
+
 type RuntimeBasemap struct {
 	Position        int64
 	Name            string

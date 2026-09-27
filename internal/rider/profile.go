@@ -79,11 +79,20 @@ const (
 // keeps the scan off every sample the service has ever stored.
 const SuggestionWindow = 90 * 24 * time.Hour
 
+// FunctionalThresholdPowerFallbackWindow is how far back the FTP suggestion
+// alone falls back to when SuggestionWindow yields no FTP estimate: an
+// indoor-only rider can go half a year without an outdoor power ride.
+const FunctionalThresholdPowerFallbackWindow = 365 * 24 * time.Hour
+
 // Suggestions are what the rider's recent rides say their numbers could be,
 // offered beside the fields and never stored. A sensor the rides do not carry
 // yields no suggestion rather than a zero.
 type Suggestions struct {
-	MaxHeartRateBPM Value
+	// FunctionalThresholdPowerFrom is the start of the ride the FTP suggestion
+	// was taken from, zero when there is no suggestion. It may predate
+	// SuggestionWindow, when FunctionalThresholdPowerFallbackWindow supplied it.
+	FunctionalThresholdPowerFrom time.Time
+	MaxHeartRateBPM              Value
 	// ThresholdHeartRateBPM is only a genuine LTHR reading when the twenty
 	// minutes it was taken from was a maximal, evenly paced effort; see
 	// ThresholdHeartRateWindow.

@@ -199,28 +199,37 @@ func (c *Client) token(ctx context.Context, form url.Values) (Session, error) {
 	}, nil
 }
 
-// PlayerID returns the rider's own player id, the handle every other call in
-// this package addresses them by.
-func (c *Client) PlayerID(ctx context.Context, session Session) (int64, error) {
+// Profile is the rider's own player id, the handle every other call in this
+// package addresses them by, and the FTP Zwift's own profile holds for them.
+type Profile struct {
+	ID int64
+	// FTPWatts is Zwift's own FTP figure. Riders who have never set one, or
+	// set zero, carry no positive value, which is not this package's to guess.
+	FTPWatts float64
+}
+
+// Profile reads the rider's own player id and FTP off one profile call.
+func (c *Client) Profile(ctx context.Context, session Session) (Profile, error) {
 	if session.AccessToken == "" {
-		return 0, errors.New("zwift: session access token is required")
+		return Profile{}, errors.New("zwift: session access token is required")
 	}
 	request, err := c.newAPIRequest(ctx, http.MethodGet, "/api/profiles/me", nil, session)
 	if err != nil {
-		return 0, err
+		return Profile{}, err
 	}
 
 	var response struct {
-		ID int64 `json:"id"`
+		ID  int64   `json:"id"`
+		FTP float64 `json:"ftp"`
 	}
 	if err := c.doJSON(request, &response, apiRequest); err != nil {
-		return 0, err
+		return Profile{}, err
 	}
 	if response.ID <= 0 {
-		return 0, errors.New("zwift: profile response did not contain an id")
+		return Profile{}, errors.New("zwift: profile response did not contain an id")
 	}
 
-	return response.ID, nil
+	return Profile{ID: response.ID, FTPWatts: response.FTP}, nil
 }
 
 // Activities returns one offset page of the rider's own activities, newest

@@ -5,7 +5,8 @@
  * service's setting: these numbers are this rider's, read and written over
  * their own subject, and every derived training metric downstream needs them.
  *
- * Beside three of the fields sits what the rider's own recent rides suggest.
+ * Beside three of the fields sits what the rider's own recent rides suggest,
+ * and beside FTP also what Zwift's own profile holds.
  * A suggestion is offered, never applied: taking it only fills the field, and
  * nothing uses it until the rider has saved it as their own.
  */
@@ -34,7 +35,53 @@ interface Parameter {
    * the stopping habit, which is a distribution the route panel draws rather
    * than a figure this page can put beside a field.
    */
-  suggested?: Exclude<keyof RiderProfileView["suggestions"], "stopping">;
+  suggested?: Exclude<
+    keyof RiderProfileView["suggestions"],
+    "stopping" | "functionalThresholdPowerFrom" | "zwift"
+  >;
+}
+
+/** A figure offered beside a field: where it comes from, and the sentence saying so. */
+interface Offer {
+  source: string;
+  value: number;
+  sentence: string;
+}
+
+const rideDate = new Intl.DateTimeFormat(undefined, {
+  day: "numeric",
+  month: "short",
+  year: "numeric",
+});
+
+/**
+ * What the page offers beside one field: the rider's own rides, and for FTP
+ * also the figure Zwift's profile held at the last poll.
+ */
+function offersFor(parameter: Parameter, suggestions: RiderProfileView["suggestions"]): Offer[] {
+  const offers: Offer[] = [];
+  const suggestion = parameter.suggested && suggestions[parameter.suggested];
+  if (suggestion !== undefined) {
+    const value = Math.round(suggestion);
+    const from =
+      parameter.field === "functionalThresholdPowerWatts"
+        ? suggestions.functionalThresholdPowerFrom
+        : undefined;
+    offers.push({
+      source: "rides",
+      value,
+      sentence: from
+        ? ` Your ride of ${rideDate.format(new Date(from))} suggests ${value} ${parameter.unit}.`
+        : ` Your rides of the last 90 days suggest ${value} ${parameter.unit}.`,
+    });
+  }
+  const zwift = suggestions.zwift;
+  if (parameter.field === "functionalThresholdPowerWatts" && zwift) {
+    const value = Math.round(zwift.functionalThresholdPowerWatts);
+    offers.push({ source: "Zwift", value, sentence: ` Zwift holds ${value} ${parameter.unit}.` });
+  }
+
+  return offers;
 }
 
 const PARAMETERS: Parameter[] = [
@@ -196,8 +243,7 @@ export function RiderProfile() {
         {GROUPS.map((group) => (
           <FormGroup key={group} title={group}>
             {PARAMETERS.filter((parameter) => parameter.group === group).map((parameter) => {
-              const suggestion = parameter.suggested && data.suggestions[parameter.suggested];
-              const rounded = suggestion === undefined ? undefined : Math.round(suggestion);
+              const offers = offersFor(parameter, data.suggestions);
               const inputId = `${id}-${parameter.field}`;
 
               return (
@@ -209,25 +255,33 @@ export function RiderProfile() {
                   hint={
                     <>
                       {parameter.description}
-                      {rounded === undefined
-                        ? null
-                        : ` Your rides of the last 90 days suggest ${rounded} ${parameter.unit}.`}
+                      {offers.map((offer) => offer.sentence).join("")}
                     </>
                   }
                 >
-                  {rounded === undefined ? null : (
+                  {offers.map((offer) => (
                     <button
+                      key={offer.source}
                       type="button"
                       className="inline-flex items-center gap-1 rounded-full bg-[color-mix(in_oklab,var(--primary)_10%,transparent)] px-2 py-0.5 text-xs hover:bg-[color-mix(in_oklab,var(--primary)_18%,transparent)] focus-visible:outline-2 focus-visible:outline-[var(--accent)] focus-visible:outline-offset-2"
-                      aria-label={`Use the suggested ${parameter.label.toLowerCase()}, ${rounded} ${parameter.unit}`}
+                      aria-label={
+                        offer.source === "rides"
+                          ? `Use the suggested ${parameter.label.toLowerCase()}, ${offer.value} ${parameter.unit}`
+                          : `Use ${offer.source}'s ${parameter.label.toLowerCase()}, ${offer.value} ${parameter.unit}`
+                      }
                       onClick={() =>
-                        setDraft((current) => ({ ...current, [parameter.field]: String(rounded) }))
+                        setDraft((current) => ({
+                          ...current,
+                          [parameter.field]: String(offer.value),
+                        }))
                       }
                     >
                       <IconSparkles size={12} aria-hidden="true" />
-                      Use {rounded}
+                      {offer.source === "rides"
+                        ? `Use ${offer.value}`
+                        : `${offer.source} ${offer.value}`}
                     </button>
-                  )}
+                  ))}
                   <UnitInput
                     id={inputId}
                     unit={parameter.unit}

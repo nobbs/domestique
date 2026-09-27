@@ -40,6 +40,9 @@ type ZwiftReader interface {
 	// ActivityWorkout reads the name Zwift lists a ride under, with its hash
 	// and completion. found is false when the document named nothing.
 	ActivityWorkout(ctx context.Context, id int64) (workout Workout, found bool, err error)
+	// FunctionalThresholdPowerWatts is the FTP Zwift's own profile carried at
+	// sign-in, false when it sent none or a value that is not positive.
+	FunctionalThresholdPowerWatts() (watts float64, ok bool)
 }
 
 // Workout is what Zwift lists a ride as: its name, a structured workout's or
@@ -58,6 +61,9 @@ type ZwiftStore interface {
 	// RiderZwiftCredentials are the rider's own Zwift email and password, each
 	// empty when it has not been entered.
 	RiderZwiftCredentials(ctx context.Context, subject string) (email, password []byte, err error)
+	// SetRiderZwiftFTP records the FTP a poll's sign-in read off the rider's
+	// own profile, and when it read it; zero removes it.
+	SetRiderZwiftFTP(ctx context.Context, subject string, watts float64, at time.Time) error
 	KnownActivityIDs(ctx context.Context, targetID, provider string) ([]int64, error)
 	StoreActivity(ctx context.Context, targetID string, listing Listing, summary Summary, now time.Time) error
 	// DeleteTrainerCopy removes the Wahoo activities of an indoor type that
@@ -133,6 +139,15 @@ func (p *ZwiftPoller) Poll(ctx context.Context, targetID string) Result {
 	reader, signInErr := p.source.SignIn(ctx, email, password)
 	if signInErr != nil {
 		return Result{Outcome: Failed, Failure: p.classify(targetID, signInErr)}
+	}
+	// A profile holding no FTP clears the last one, so the page never offers
+	// a figure Zwift no longer holds.
+	watts, ok := reader.FunctionalThresholdPowerWatts()
+	if !ok {
+		watts = 0
+	}
+	if err := p.store.SetRiderZwiftFTP(ctx, subject, watts, p.now()); err != nil {
+		return Result{Outcome: Failed, Failure: FailureState}
 	}
 
 	stored, failure := p.storeNew(ctx, targetID, reader)

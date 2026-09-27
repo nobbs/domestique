@@ -849,12 +849,12 @@ func (p zwiftProvider) SignIn(ctx context.Context, email, password []byte) (acti
 	if err != nil {
 		return nil, fmt.Errorf("signing in to Zwift: %w", err)
 	}
-	playerID, err := p.client.PlayerID(ctx, grant)
+	profile, err := p.client.Profile(ctx, grant)
 	if err != nil {
-		return nil, fmt.Errorf("reading the Zwift player id: %w", err)
+		return nil, fmt.Errorf("reading the Zwift profile: %w", err)
 	}
 
-	return zwiftReader{client: p.client, session: grant, playerID: playerID}, nil
+	return &zwiftReader{client: p.client, session: grant, playerID: profile.ID, ftpWatts: profile.FTPWatts}, nil
 }
 
 // DownloadActivityFIT reads the file a stored Zwift summary names. Where that
@@ -886,9 +886,16 @@ type zwiftReader struct {
 	client   *zwift.Client
 	session  zwift.Session
 	playerID int64
+	ftpWatts float64
 }
 
-func (r zwiftReader) ListActivities(
+// FunctionalThresholdPowerWatts is Zwift's own FTP off the profile SignIn
+// already read, false when Zwift sent none or a value that is not positive.
+func (r *zwiftReader) FunctionalThresholdPowerWatts() (float64, bool) {
+	return r.ftpWatts, r.ftpWatts > 0
+}
+
+func (r *zwiftReader) ListActivities(
 	ctx context.Context, start, limit int,
 ) (listings []activity.Listing, held int, err error) {
 	activities, err := r.client.Activities(ctx, r.session, r.playerID, start, limit)
@@ -901,7 +908,7 @@ func (r zwiftReader) ListActivities(
 
 // ActivityWorkout reads the name Zwift lists a ride under, with its hash and
 // completion. found is false when the document named nothing, which is unexpected.
-func (r zwiftReader) ActivityWorkout(ctx context.Context, id int64) (activity.Workout, bool, error) {
+func (r *zwiftReader) ActivityWorkout(ctx context.Context, id int64) (activity.Workout, bool, error) {
 	detail, err := r.client.Activity(ctx, r.session, id)
 	if err != nil {
 		return activity.Workout{}, false, fmt.Errorf("reading a Zwift activity's workout: %w", err)

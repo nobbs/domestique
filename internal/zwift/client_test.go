@@ -107,14 +107,27 @@ func TestClientReadsThePlayerID(t *testing.T) {
 	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		assert.Equal(t, "/api/profiles/me", request.URL.Path)
 		assert.Equal(t, "Bearer access-token", request.Header.Get("Authorization"), "authorization")
-		writeJSON(t, writer, map[string]int64{"id": 4711})
+		writeJSON(t, writer, map[string]any{"id": 4711, "ftp": 249})
 	}))
 	defer server.Close()
 
 	client := newTestClient(t, server)
-	playerID, err := client.PlayerID(t.Context(), Session{AccessToken: "access-token"})
+	profile, err := client.Profile(t.Context(), Session{AccessToken: "access-token"})
 	require.NoError(t, err)
-	assert.Equal(t, int64(4711), playerID)
+	assert.Equal(t, int64(4711), profile.ID)
+	assert.InDelta(t, 249, profile.FTPWatts, 0)
+}
+
+func TestClientProfileReadsNoFTPAsAbsent(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writeJSON(t, writer, map[string]any{"id": 4711})
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server)
+	profile, err := client.Profile(t.Context(), Session{AccessToken: "access-token"})
+	require.NoError(t, err)
+	assert.InDelta(t, 0, profile.FTPWatts, 0)
 }
 
 func TestClientListsActivitiesByOffsetAndParsesIDStr(t *testing.T) {
@@ -363,7 +376,7 @@ func TestClientReportsRejectedOn503(t *testing.T) {
 	defer server.Close()
 
 	client := newTestClient(t, server)
-	_, err := client.PlayerID(t.Context(), Session{AccessToken: "access-token"})
+	_, err := client.Profile(t.Context(), Session{AccessToken: "access-token"})
 	require.ErrorIs(t, err, ErrRejected)
 	assert.True(t, client.IsRejected(err))
 }
@@ -425,7 +438,7 @@ func TestClientHonoursItsTimeout(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	_, err = client.PlayerID(t.Context(), Session{AccessToken: "access-token"})
+	_, err = client.Profile(t.Context(), Session{AccessToken: "access-token"})
 	require.Error(t, err)
 	var netErr interface{ Timeout() bool }
 	require.True(t, errors.As(err, &netErr) || strings.Contains(err.Error(), "deadline"), "expected a timeout error, got %v", err)
@@ -455,7 +468,7 @@ func TestClientRequiredInputsAreValidated(t *testing.T) {
 	require.Error(t, err, "empty password")
 	_, err = client.Refresh(t.Context(), Session{})
 	require.Error(t, err, "empty refresh token")
-	_, err = client.PlayerID(t.Context(), Session{})
+	_, err = client.Profile(t.Context(), Session{})
 	require.Error(t, err, "empty access token")
 	_, err = client.Activities(t.Context(), Session{AccessToken: "token"}, 0, 0, 1)
 	require.Error(t, err, "missing player id")
@@ -540,7 +553,7 @@ func TestClientReportsAResponseThatFailsToRead(t *testing.T) {
 	client, err := New(&Options{Transport: erroringBodyTransport{}, Timeout: time.Second})
 	require.NoError(t, err)
 
-	_, err = client.PlayerID(t.Context(), Session{AccessToken: "access-token"})
+	_, err = client.Profile(t.Context(), Session{AccessToken: "access-token"})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "could not be read")
 }
