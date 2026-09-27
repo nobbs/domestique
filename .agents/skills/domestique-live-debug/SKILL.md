@@ -158,19 +158,22 @@ database (pre-approved), use it, and revoke it before finishing.
    ```
 
 4. Revoke through the app's own sign-out, and delete the token and binary only
-   once it answers `204`; otherwise retry, since the token is the only way to
-   revoke that session before its 24 h expiry:
+   once the token is refused afterwards (sign-out answers `204` even when the
+   revoke failed); otherwise retry, since the token is the only way to revoke
+   that session before its 24 h expiry:
 
    ```sh
-   [ "$(api -X POST http://127.0.0.1:8080/auth/logout -o /dev/null -w '%{http_code}')" = 204 ] &&
+   api -X POST http://127.0.0.1:8080/auth/logout -o /dev/null
+   [ "$(api -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/v1/status)" = 401 ] &&
      ssh domestique 'rm -f /tmp/live-session' && rm -rf .local/live-session .local/live-debug
    ```
 
 ## State database reads
 
 Only after the per-session approval. Query a throwaway copy inside a sidecar, so
-the data never leaves the host and the live WAL is never opened by a second
-writer-capable process:
+only the query's output leaves the host and the live WAL is never opened by a
+second writer-capable process. That output is off-host data too: select
+aggregates and ids, never names, geometry, or ciphertext.
 
 ```sh
 q() { ssh domestique "docker run --rm -i -v domestique_domestique-state:/data:ro alpine:3 sh -c '
@@ -178,8 +181,7 @@ q() { ssh domestique "docker run --rm -i -v domestique_domestique-state:/data:ro
 q "SELECT version FROM schema_migrations ORDER BY version DESC LIMIT 1;"
 ```
 
-Prefer aggregates and ids over rows holding names, geometry, or ciphertext. The
-schema lives in `internal/sqlite/migrations` and `internal/sqlite/queries`.
+The schema lives in `internal/sqlite/migrations` and `internal/sqlite/queries`.
 
 An approved write first copies `state.db` and its `-wal` into
 `/srv/domestique/backups` as `state.db.<UTC stamp>.<reason>`, then runs in the
