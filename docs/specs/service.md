@@ -243,7 +243,8 @@ a new non-admin session held by that subject, and keeps its own token aside in
 24: the rider's own sign-in claim is never re-checked, only the admin's was.
 `POST /auth/impersonate/stop` revokes the impersonated session and restores
 the kept token only while it still verifies as admin; otherwise the caller is
-left signed out. Signing out while impersonating revokes both sessions.
+left signed out. Signing out while impersonating revokes both sessions, and
+completing a sign-in revokes and clears any kept token.
 
 No identity header — `Cf-Access-Jwt-Assertion`,
 `Cf-Access-Authenticated-User-Email`, or `Tailscale-User-Login` — is ever read.

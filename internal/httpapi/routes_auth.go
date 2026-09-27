@@ -135,6 +135,14 @@ func (h *Handler) CompleteLogin(writer http.ResponseWriter, request *http.Reques
 	}
 
 	h.clearCookie(writer, loginCookie)
+	// A real sign-in replaces any impersonation: a kept admin token left
+	// behind would label, and let Stop swap out, the session just issued.
+	if kept, keptErr := request.Cookie(impersonatorCookie); keptErr == nil {
+		if revokeErr := h.sessions.Revoke(request.Context(), kept.Value); revokeErr != nil {
+			slog.Warn("impersonation discard incomplete", "reason", "revoke_failed")
+		}
+		h.clearCookie(writer, impersonatorCookie)
+	}
 	h.setSessionCookie(writer, completion.Token, completion.ExpiresAt)
 	http.Redirect(writer, request, "/", http.StatusSeeOther)
 }

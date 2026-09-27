@@ -268,3 +268,28 @@ func TestWebUIConfigSaysWhenImpersonating(t *testing.T) {
 		})
 	}
 }
+
+// A real sign-in while impersonating must not leave the kept admin token
+// behind to label, or be restored over, the session it just issued.
+func TestCompleteLoginDiscardsAnImpersonation(t *testing.T) {
+	for name, revokeErr := range map[string]error{"revoked": nil, "revoke failed": assert.AnError} {
+		t.Run(name, func(t *testing.T) {
+			sessions := newFakeSessions()
+			sessions.revokeErr = revokeErr
+			handler := newImpersonationHandler(t, sessions)
+			request := httptest.NewRequestWithContext(
+				t.Context(), http.MethodGet, "/auth/callback?state=abc&code=xyz", http.NoBody)
+			withCookie(request, loginCookie, "abc")
+			withCookie(request, impersonatorCookie, "kept-admin-token")
+
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, request)
+
+			require.Equal(t, http.StatusSeeOther, response.Code)
+			assert.Equal(t, []string{"kept-admin-token"}, sessions.revoked)
+			cleared := setCookie(t, response, impersonatorCookie)
+			require.NotNil(t, cleared)
+			assert.Negative(t, cleared.MaxAge)
+		})
+	}
+}
