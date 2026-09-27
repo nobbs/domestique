@@ -91,6 +91,20 @@ then gather evidence with the commands here. Frequent ones:
 - **Restart loop / crash**: `RestartCount`, `docker logs --tail 100`, and
   `docker events --since 1h --filter container=domestique-domestique-1`.
 - **Proxy / TLS**: `docker logs --tail 50 domestique-traefik-1`.
+- **"Why wasn't X processed?"** (a ride not recorded or analysed, a task that
+  never ran): `task_runs` is the durable history and survives the deploys that
+  wipe the logs. With the read approval, list the window and look for
+  `skipped` with `resource_held` or `already_working`, and a `manual` trigger,
+  which is also what a webhook-started run records:
+
+  ```sh
+  q "SELECT task, argument, trigger, outcome, detail, datetime(started_at_unix,'unixepoch') s,
+       finished_at_unix-started_at_unix dur FROM task_runs
+     WHERE started_at_unix > strftime('%s','now','-1 day') ORDER BY started_at_unix;"
+  q "SELECT task, trigger, outcome, detail, count(*) n, datetime(max(started_at_unix),'unixepoch') last
+     FROM task_runs WHERE started_at_unix > strftime('%s','now','-14 days')
+     GROUP BY 1,2,3,4 ORDER BY 1,2,3;"
+  ```
 
 ## Authenticated API
 
@@ -149,7 +163,7 @@ writer-capable process:
 
 ```sh
 q() { ssh domestique "docker run --rm -i -v domestique_domestique-state:/data:ro alpine:3 sh -c '
-  apk add -q sqlite >/dev/null && cp /data/state.db* /tmp/ && sqlite3 -readonly -json /tmp/state.db'" <<<"$1"; }
+  apk add -q sqlite >/dev/null && cp /data/state.db* /tmp/ && sqlite3 -readonly -box /tmp/state.db'" <<<"$1"; }
 q "SELECT version FROM schema_migrations ORDER BY version DESC LIMIT 1;"
 ```
 
